@@ -26,12 +26,7 @@
    <string>MainWindow</string>
   </property>
   <property name="styleSheet">
-   <string notr="true">#adapterConfig QComboBox {
-	margin-left: 5px;
-	padding: 3px;
-}
-
-#serverConfig QLineEdit {
+   <string notr="true">#serverConfig QLineEdit {
 	margin-left: 5px;
 	padding: 3px
 }
@@ -151,7 +146,7 @@
         </spacer>
        </item>
        <item>
-        <widget class="QFrame" name="adapterConfig">
+        <widget class="QFrame" name="serverConfig_2">
          <property name="minimumSize">
           <size>
            <width>337</width>
@@ -171,8 +166,11 @@
           <enum>QFrame::Raised</enum>
          </property>
          <layout class="QHBoxLayout" name="horizontalLayout_4">
+          <property name="spacing">
+           <number>12</number>
+          </property>
           <item>
-           <widget class="QLabel" name="adapterLabel">
+           <widget class="QLabel" name="serverLabel_2">
             <property name="minimumSize">
              <size>
               <width>51</width>
@@ -199,7 +197,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QComboBox" name="adapterSelect">
+           <widget class="QComboBox" name="comboBox">
             <property name="minimumSize">
              <size>
               <width>0</width>
@@ -380,7 +378,7 @@
            </spacer>
           </item>
           <item>
-           <widget class="QPushButton" name="connectButton">
+           <widget class="QPushButton" name="connectBtn">
             <property name="minimumSize">
              <size>
               <width>136</width>
@@ -404,7 +402,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="disconnectButton">
+           <widget class="QPushButton" name="disconnectBtn">
             <property name="minimumSize">
              <size>
               <width>136</width>
