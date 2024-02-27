@@ -12,6 +12,7 @@ from main_ui import Ui_MainWindow
 ROBOT_PORT_1 = 30004    # RTDE
 ROBOT_PORT_2 = 29999    # Socket
 config_filename = 'config/main-config.xml'
+motion_database = 'data/motion-data.db'
 
 class URCommunication_UI(QMainWindow):
     def __init__(self):
@@ -35,6 +36,8 @@ class URCommunication_UI(QMainWindow):
         
         # self.ui.startFreeDriveBtn.clicked.connect(self.enable_free_drive)
         # self.ui.endFreeDriveBtn.clicked.connect(self.disable_free_drive)
+        SQLTableName = self.ui.motionNameInput.text()
+        self.ui.recordBtn.clicked.connect(self.record_position)
 
     def setup_connection(self):
         try:
@@ -102,21 +105,33 @@ class URCommunication_UI(QMainWindow):
             self.s.send(('power on' + '\n').encode())
             self.ui.outputResponse.append(' [ACTION]\tButton "Power On" is triggered successfully.')
         except Exception as e:
-            self.ui.outputResponse.append(' [ERROR]\tError triggering the selected button. Please check the remote connection.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}')
     
     def power_off(self):
         try:
             self.s.send(('power off' + '\n').encode())
             self.ui.outputResponse.append(' [ACTION]\tButton "Power Off" is triggered successfully.')
+        
         except Exception as e:
-            self.ui.outputResponse.append(' [ERROR]\tError triggering the selected button. Please check the remote connection.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}')
     
     def brake_release(self):
         try:
             self.s.send(('brake release' + '\n').encode())
             self.ui.outputResponse.append(' [ACTION]\tButton "Brake Release" is triggered successfully.')
+        
         except Exception as e:
-            self.ui.outputResponse.append(' [ERROR]\tError triggering the selected button. Please check the remote connection.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}')
+    
+    def record_position(self):
+        try:
+            for _ in range(10):
+                state = self.con.receive()
+            current_pos = state.actual_TCP_pose
+            self.ui.outputResponse.append(str(current_pos))
+        
+        except Exception as e:
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}')
 
 
 if __name__ == '__main__':
