@@ -31,7 +31,9 @@
 	padding: 3px
 }
 
-#outputFrame QScrollArea {background:blue}</string>
+#outputResponse {
+	padding: 0px
+}</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_11">
@@ -697,6 +699,15 @@
                  </item>
                  <item>
                   <widget class="QSlider" name="speedControl">
+                   <property name="minimum">
+                    <number>2</number>
+                   </property>
+                   <property name="maximum">
+                    <number>100</number>
+                   </property>
+                   <property name="singleStep">
+                    <number>1</number>
+                   </property>
                    <property name="orientation">
                     <enum>Qt::Horizontal</enum>
                    </property>
@@ -1416,7 +1427,7 @@
         </widget>
        </item>
        <item>
-        <widget class="QScrollArea" name="scrollArea">
+        <widget class="QTextEdit" name="outputResponse">
          <property name="minimumSize">
           <size>
            <width>1175</width>
@@ -1429,22 +1440,23 @@
            <height>190</height>
           </size>
          </property>
-         <property name="widgetResizable">
-          <bool>true</bool>
+         <property name="sizeIncrement">
+          <size>
+           <width>0</width>
+           <height>0</height>
+          </size>
          </property>
-         <property name="alignment">
-          <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+         <property name="font">
+          <font>
+           <pointsize>9</pointsize>
+          </font>
          </property>
-         <widget class="QWidget" name="scrollAreaWidgetContents_2">
-          <property name="geometry">
-           <rect>
-            <x>0</x>
-            <y>0</y>
-            <width>1173</width>
-            <height>188</height>
-           </rect>
-          </property>
-         </widget>
+         <property name="verticalScrollBarPolicy">
+          <enum>Qt::ScrollBarAlwaysOn</enum>
+         </property>
+         <property name="horizontalScrollBarPolicy">
+          <enum>Qt::ScrollBarAsNeeded</enum>
+         </property>
         </widget>
        </item>
        <item>

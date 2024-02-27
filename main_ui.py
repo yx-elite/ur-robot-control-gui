@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'c:\Users\user\Desktop\Github Projects\ur-robot-control-gui\main.ui'
+# Form implementation generated from reading ui file 'main.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -26,7 +26,9 @@ class Ui_MainWindow(object):
 "    padding: 3px\n"
 "}\n"
 "\n"
-"#outputFrame QScrollArea {background:blue}")
+"#outputResponse {\n"
+"    padding: 0px\n"
+"}")
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.verticalLayout_11 = QtWidgets.QVBoxLayout(self.centralwidget)
@@ -266,6 +268,9 @@ class Ui_MainWindow(object):
         self.horizontalLayout_8.addItem(spacerItem4)
         self.verticalLayout_5.addLayout(self.horizontalLayout_8)
         self.speedControl = QtWidgets.QSlider(self.frame_9)
+        self.speedControl.setMinimum(2)
+        self.speedControl.setMaximum(100)
+        self.speedControl.setSingleStep(1)
         self.speedControl.setOrientation(QtCore.Qt.Horizontal)
         self.speedControl.setObjectName("speedControl")
         self.verticalLayout_5.addWidget(self.speedControl)
@@ -521,17 +526,17 @@ class Ui_MainWindow(object):
         self.clearTableBtn.setObjectName("clearTableBtn")
         self.horizontalLayout_13.addWidget(self.clearTableBtn)
         self.verticalLayout_2.addWidget(self.frame_4)
-        self.scrollArea = QtWidgets.QScrollArea(self.outputFrame)
-        self.scrollArea.setMinimumSize(QtCore.QSize(1175, 190))
-        self.scrollArea.setMaximumSize(QtCore.QSize(1175, 190))
-        self.scrollArea.setWidgetResizable(True)
-        self.scrollArea.setAlignment(QtCore.Qt.AlignLeading|QtCore.Qt.AlignLeft|QtCore.Qt.AlignVCenter)
-        self.scrollArea.setObjectName("scrollArea")
-        self.scrollAreaWidgetContents_2 = QtWidgets.QWidget()
-        self.scrollAreaWidgetContents_2.setGeometry(QtCore.QRect(0, 0, 1173, 188))
-        self.scrollAreaWidgetContents_2.setObjectName("scrollAreaWidgetContents_2")
-        self.scrollArea.setWidget(self.scrollAreaWidgetContents_2)
-        self.verticalLayout_2.addWidget(self.scrollArea)
+        self.outputResponse = QtWidgets.QTextEdit(self.outputFrame)
+        self.outputResponse.setMinimumSize(QtCore.QSize(1175, 190))
+        self.outputResponse.setMaximumSize(QtCore.QSize(1175, 190))
+        self.outputResponse.setSizeIncrement(QtCore.QSize(0, 0))
+        font = QtGui.QFont()
+        font.setPointSize(9)
+        self.outputResponse.setFont(font)
+        self.outputResponse.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOn)
+        self.outputResponse.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        self.outputResponse.setObjectName("outputResponse")
+        self.verticalLayout_2.addWidget(self.outputResponse)
         spacerItem7 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.verticalLayout_2.addItem(spacerItem7)
         self.progressBar = QtWidgets.QProgressBar(self.outputFrame)
@@ -610,3 +615,13 @@ class Ui_MainWindow(object):
         self.outputLabel.setText(_translate("MainWindow", "System Output"))
         self.clearOutputBtn.setText(_translate("MainWindow", "Clear Output"))
         self.clearTableBtn.setText(_translate("MainWindow", "Clear Table"))
+
+
+if __name__ == "__main__":
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+    MainWindow = QtWidgets.QMainWindow()
+    ui = Ui_MainWindow()
+    ui.setupUi(MainWindow)
+    MainWindow.show()
+    sys.exit(app.exec_())

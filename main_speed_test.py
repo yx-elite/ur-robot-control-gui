@@ -11,7 +11,7 @@ from main_ui import Ui_MainWindow
 
 ROBOT_PORT_1 = 30004    # RTDE
 ROBOT_PORT_2 = 29999    # Socket
-config_filename = 'config/main-config.xml'
+config_filename = 'config/config-test.xml'
 
 class URCommunication_UI(QMainWindow):
     def __init__(self):
@@ -35,6 +35,7 @@ class URCommunication_UI(QMainWindow):
         
         # self.ui.startFreeDriveBtn.clicked.connect(self.enable_free_drive)
         # self.ui.endFreeDriveBtn.clicked.connect(self.disable_free_drive)
+        self.ui.speedControl.valueChanged.connect(self.update_speed)
 
     def setup_connection(self):
         try:
@@ -117,6 +118,19 @@ class URCommunication_UI(QMainWindow):
             self.ui.outputResponse.append(' [ACTION]\tButton "Brake Release" is triggered successfully.')
         except Exception as e:
             self.ui.outputResponse.append(' [ERROR]\tError triggering the selected button. Please check the remote connection.')
+
+    def update_speed(self, value):
+        try:
+            # Scale the slider value to the desired speed range
+            scaled_speed = value / 100.0  # Assuming the speed range is from 0 to 1
+            
+            # Send the speed value to the robot using RTDE
+            self.setp.speed_slider_mask = 1   # Assuming speed_slider_mask is the mask for speed control
+            self.setp.speed_slider_fraction = scaled_speed
+            
+            self.ui.outputResponse.append(f' [INFO]\tSpeed set to: {scaled_speed}')
+        except Exception as e:
+            self.ui.outputResponse.append(' [ERROR]\tError setting the speed.')
 
 
 if __name__ == '__main__':
