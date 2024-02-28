@@ -124,10 +124,17 @@
               <property name="font">
                <font>
                 <pointsize>9</pointsize>
+                <weight>50</weight>
+                <italic>false</italic>
+                <bold>false</bold>
+                <underline>false</underline>
                </font>
               </property>
               <property name="text">
-               <string>Yi Xian</string>
+               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Yi Xian (&lt;a href=&quot;https://github.com/yx-elite&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#000000;&quot;&gt;GitHub&lt;/span&gt;&lt;/a&gt;)&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+              </property>
+              <property name="openExternalLinks">
+               <bool>true</bool>
               </property>
              </widget>
             </item>

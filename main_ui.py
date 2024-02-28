@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'c:\Users\user\Desktop\Github Projects\ur-robot-control-gui\main.ui'
+# Form implementation generated from reading ui file 'main.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -70,7 +70,12 @@ class Ui_MainWindow(object):
         self.github.setMaximumSize(QtCore.QSize(16777215, 20))
         font = QtGui.QFont()
         font.setPointSize(9)
+        font.setBold(False)
+        font.setItalic(False)
+        font.setUnderline(False)
+        font.setWeight(50)
         self.github.setFont(font)
+        self.github.setOpenExternalLinks(True)
         self.github.setObjectName("github")
         self.horizontalLayout_3.addWidget(self.github)
         self.verticalLayout.addLayout(self.horizontalLayout_3)
@@ -551,7 +556,7 @@ class Ui_MainWindow(object):
         MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
         self.appTitle.setText(_translate("MainWindow", "Universal Robots Communication Tool"))
         self.developer.setText(_translate("MainWindow", "Developed by"))
-        self.github.setText(_translate("MainWindow", "Yi Xian"))
+        self.github.setText(_translate("MainWindow", "<html><head/><body><p>Yi Xian (<a href=\"https://github.com/yx-elite\"><span style=\" text-decoration: underline; color:#000000;\">GitHub</span></a>)</p></body></html>"))
         self.adapterLabel.setText(_translate("MainWindow", "Adapter"))
         self.serverLabel.setText(_translate("MainWindow", "Server"))
         self.connectionStatus.setText(_translate("MainWindow", "Connected"))
@@ -591,3 +596,13 @@ class Ui_MainWindow(object):
         self.outputLabel.setText(_translate("MainWindow", "System Output"))
         self.clearOutputBtn.setText(_translate("MainWindow", "Clear Output"))
         self.clearTableBtn.setText(_translate("MainWindow", "Clear Table"))
+
+
+if __name__ == "__main__":
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+    MainWindow = QtWidgets.QMainWindow()
+    ui = Ui_MainWindow()
+    ui.setupUi(MainWindow)
+    MainWindow.show()
+    sys.exit(app.exec_())
