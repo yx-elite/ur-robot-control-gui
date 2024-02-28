@@ -14,6 +14,7 @@ ROBOT_PORT_1 = 30004    # RTDE
 ROBOT_PORT_2 = 29999    # Socket
 config_filename = 'config/main-config.xml'
 motion_database = 'data/motion-data.db'
+UR_script = 'rtde_control_loop.urp'
 
 class URCommunication_UI(QMainWindow):
     def __init__(self):
@@ -39,14 +40,34 @@ class URCommunication_UI(QMainWindow):
         
         # self.ui.startFreeDriveBtn.clicked.connect(self.enable_free_drive)
         # self.ui.endFreeDriveBtn.clicked.connect(self.disable_free_drive)
+        self.ui.urpFileInput.setText(UR_script)
+        self.ui.loadUrpBtn.clicked.connect(self.load_urp_file)
+        self.ui.playBtn.clicked.connect(self.play_robot)
+        self.ui.stopBtn.clicked.connect(self.stop_robot)
+        self.ui.pauseBtn.clicked.connect(self.pause_robot)
+        self.ui.shutDownBtn.clicked.connect(self.shutdown_robot)
+        self.ui.unlockBtn.clicked.connect(self.unlock_protective_stop)
+        self.ui.closePopUpBtn.clicked.connect(self.close_safety_popup)
+        
         self.ui.refreshBtn.clicked.connect(self.refresh_motion_dropdown)
         self.ui.loadMotionBtn.clicked.connect(self.load_position_data)
+        self.ui.deleteBtn.setEnabled(False)
         self.ui.recordBtn.clicked.connect(self.record_position)
         self.ui.runRobotBtn.clicked.connect(self.run_robot)
         self.ui.numRepetition.setValue(3)
         
         self.ui.clearOutputBtn.clicked.connect(self.ui.outputResponse.clear)
         self.ui.clearTableBtn.clicked.connect(self.clear_table)
+    
+    def send_dashboard_server_command(self, command):
+        try:
+            self.s.send((command + '\n').encode())
+            response = self.s.recv(1024).decode()
+            self.ui.outputResponse.append(f' [ACTION]\t{response[:-1]}')
+            return response
+        except Exception as e:
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}')
+            return None
 
     def setup_connection(self):
         try:
@@ -81,8 +102,13 @@ class URCommunication_UI(QMainWindow):
             # ------------ Initialize dashboard server connection ------------
             self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.s.connect((self.ROBOT_HOST, ROBOT_PORT_2))
-            polyscope_ver = self.s.send(('PolyscopeVersion' + '\n').encode())
-            software_ver = self.s.send(('Version' + '\n').encode())
+            self.s.recv(1024).decode()
+            self.s.send(('PolyScopeVersion' + '\n').encode())
+            polyscope_ver = self.s.recv(1024).decode()
+            self.s.send(('get serial number' + '\n').encode())
+            serial_num = self.s.recv(1024).decode()
+            self.s.send(('get robot model' + '\n').encode())
+            robot_model = self.s.recv(1024).decode()
             self.ui.outputResponse.append(f' [INFO]\tDashboard server connection initialized successfully.')
             
             # ------------ Initialize dashboard server connection ------------
@@ -90,9 +116,11 @@ class URCommunication_UI(QMainWindow):
             self.cur = self.conn.cursor()
             self.ui.outputResponse.append(f' [INFO]\tDatabase connection initialized successfully.')
             
-            self.ui.outputResponse.append(f'\n Successfully connected to {self.ROBOT_HOST}')
-            self.ui.outputResponse.append(f' - Polyscope Version\t: {float(polyscope_ver)}')
-            self.ui.outputResponse.append(f' - Software Version\t: {float(software_ver)}\n')
+            # ------------ Overall status display --------------------
+            self.ui.outputResponse.append(f'\n Successfully connected to robot host "{self.ROBOT_HOST}".')
+            self.ui.outputResponse.append(f' - Polyscope Version\t: {str(polyscope_ver[:-1])}')
+            self.ui.outputResponse.append(f' - Serial Number\t: {str(serial_num[:-1])}')
+            self.ui.outputResponse.append(f' - UR Robot Model\t: {str(robot_model[:-1])}\n')
             self.load_database_motion()
             self.ui.connectionStatus.setChecked(True)
             self.ui.connectBtn.setEnabled(False)
@@ -143,6 +171,67 @@ class URCommunication_UI(QMainWindow):
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
     
+    def load_urp_file(self):
+        try:
+            urp_file = str(self.ui.urpFileInput.text())
+            load_urp_resp = self.send_dashboard_server_command(f'load {urp_file}')
+            
+            if 'Loading' in load_urp_resp:
+                self.send_dashboard_server_command('get loaded program')
+            else:
+                pass
+                
+        except Exception as e:
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+    
+    def play_robot(self):
+        try:
+            self.s.send(('play' + '\n').encode())
+            self.ui.outputResponse.append(' [ACTION]\tButton "Play Robot" is triggered successfully.')
+        
+        except Exception as e:
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+    
+    def stop_robot(self):
+        try:
+            self.s.send(('stop' + '\n').encode())
+            self.ui.outputResponse.append(' [ACTION]\tButton "Stop Robot" is triggered successfully.')
+        
+        except Exception as e:
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+    
+    def pause_robot(self):
+        try:
+            self.s.send(('pause' + '\n').encode())
+            self.ui.outputResponse.append(' [ACTION]\tButton "Pause Robot" is triggered successfully.')
+        
+        except Exception as e:
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+    
+    def shutdown_robot(self):
+        try:
+            self.s.send(('shutdown' + '\n').encode())
+            self.ui.outputResponse.append(' [ACTION]\tButton "Shutdown Robot" is triggered successfully.')
+        
+        except Exception as e:
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+    
+    def unlock_protective_stop(self):
+        try:
+            self.s.send(('unlock protective stop' + '\n').encode())
+            self.ui.outputResponse.append(' [ACTION]\tButton "Unlock Protective Stop" is triggered successfully.')
+        
+        except Exception as e:
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+    
+    def close_safety_popup(self):
+        try:
+            self.s.send(('close safety popup' + '\n').encode())
+            self.ui.outputResponse.append(' [ACTION]\tButton "Close Safety Popup" is triggered successfully.')
+        
+        except Exception as e:
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+    
     def create_database_table(self):
         # Create new motion table
         self.new_table = self.ui.motionNameInput.text()
@@ -165,6 +254,7 @@ class URCommunication_UI(QMainWindow):
             self.motions.sort()
             self.ui.motionSelect.clear()
             self.ui.motionSelect.addItems(self.motions)
+            self.ui.deleteBtn.setEnabled(True)
             return True
 
         except Exception as e:
