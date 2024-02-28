@@ -21,9 +21,8 @@ class Ui_MainWindow(object):
         sizePolicy.setHeightForWidth(MainWindow.sizePolicy().hasHeightForWidth())
         MainWindow.setSizePolicy(sizePolicy)
         MainWindow.setMaximumSize(QtCore.QSize(1250, 800))
-        MainWindow.setStyleSheet("#adapterConfig QComboBox {\n"
-"    margin-left: 5px;\n"
-"    padding: 3px;\n"
+        MainWindow.setStyleSheet("QLineEdit {\n"
+"    padding: 3px\n"
 "}\n"
 "\n"
 "#serverConfig QLineEdit {\n"
@@ -85,6 +84,7 @@ class Ui_MainWindow(object):
         self.adapterConfig.setFrameShadow(QtWidgets.QFrame.Raised)
         self.adapterConfig.setObjectName("adapterConfig")
         self.horizontalLayout_4 = QtWidgets.QHBoxLayout(self.adapterConfig)
+        self.horizontalLayout_4.setSpacing(11)
         self.horizontalLayout_4.setObjectName("horizontalLayout_4")
         self.adapterLabel = QtWidgets.QLabel(self.adapterConfig)
         self.adapterLabel.setMinimumSize(QtCore.QSize(51, 0))
