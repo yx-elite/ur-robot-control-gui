@@ -5,7 +5,7 @@ import sqlite3
 import rtde.rtde as rtde
 import rtde.rtde_config as rtde_config
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget
+from PyQt5.QtWidgets import QMainWindow, QApplication, QTableWidgetItem
 from PyQt5.uic import loadUi
 from main_ui import Ui_MainWindow
 
@@ -184,9 +184,12 @@ class URCommunication_UI(QMainWindow):
                 self.setpoints.append(setpoint)
                 self.ui.outputResponse.append(f' [INFO]\tSetp {str(row[0])}: {str(setpoint)}')
             
-            # Arrange the position
-            
-                    
+            # Arrange the position data into QTableWidget
+            for row_index, row_data in enumerate(self.setpoints):
+                self.ui.motionTable.insertRow(row_index)
+                for col_index, col_value in enumerate(row_data):
+                    self.ui.motionTable.setItem(row_index, col_index, QTableWidgetItem(str(f'{col_value}')))
+        
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
         
@@ -197,11 +200,12 @@ class URCommunication_UI(QMainWindow):
             for _ in range(10):
                 # Receive and save the robot position data
                 state = self.con.receive()
-                current_pos = state.actual_TCP_pose
-                self.cur.execute(f'''INSERT INTO {self.new_table} (x, y, z, rx, ry, rz)
-                                    VALUES (?, ?, ?, ?, ?, ?)''', 
-                                    (current_pos[0], current_pos[1], current_pos[2],
-                                    current_pos[3], current_pos[4], current_pos[5]))
+            
+            current_pos = state.actual_TCP_pose
+            self.cur.execute(f'''INSERT INTO {self.new_table} (x, y, z, rx, ry, rz)
+                                VALUES (?, ?, ?, ?, ?, ?)''', 
+                                (current_pos[0], current_pos[1], current_pos[2],
+                                current_pos[3], current_pos[4], current_pos[5]))
             self.conn.commit()
             self.ui.outputResponse.append(f' [ACTION]\tPositions recorded and saved to database as "{self.new_table}".')
             self.ui.outputResponse.append(f' [INFO]\t{str(current_pos)}')
