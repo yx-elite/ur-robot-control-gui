@@ -4,49 +4,106 @@ import socket
 import sqlite3
 import rtde.rtde as rtde
 import rtde.rtde_config as rtde_config
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtWidgets import QMainWindow, QApplication, QTableWidgetItem
 from PyQt5.uic import loadUi
 from main_ui import Ui_MainWindow
-
 
 ROBOT_PORT_1 = 30004    # RTDE
 ROBOT_PORT_2 = 29999    # Socket
 config_filename = 'config/main-config.xml'
 motion_database = 'data/motion-data.db'
 
+class RobotControlThread(QThread):
+    update_progress = pyqtSignal(float)
+
+    def __init__(self, setp, con, setpoints, watchdog, num_repetition, parent=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.setp = setp
+        self.con = con  # Store the con object
+        self.setpoints = setpoints
+        self.watch_dog = watchdog
+        self.num_repetition = num_repetition
+        self.num_setpoints = len(setpoints)
+        self.movement_count = 0
+        self.current_setpoint_index = 0
+        self.move_completed = True
+
+    def run(self):
+        while self.movement_count < self.num_repetition:
+            state = self.con.receive()
+            if state is None: 
+                break
+            
+            if self.move_completed and state.output_int_register_0 == 1:
+                self.move_completed = False
+                self.current_setpoint_index = (self.current_setpoint_index + 1) % self.num_setpoints
+                new_setpoint = self.setpoints[self.current_setpoint_index]
+                self.parent.list_to_setp(self.setp, new_setpoint)  # Call list_to_setp from the parent class
+                self.con.send(self.setp)
+                # self.watchdog.input_int_register_0 = 1
+                
+            elif not self.move_completed and state.output_int_register_0 == 0:
+                self.move_completed = True
+                # self.watchdog.input_int_register_0 = 0
+                self.movement_count += (1/self.num_setpoints)
+                self.update_progress.emit(self.movement_count)
+                print(self.movement_count)
+                
+            # Kick watchdog
+            # self.con.send(self.watchdog)
+
+
 class URCommunication_UI(QMainWindow):
     def __init__(self):
         super(URCommunication_UI, self).__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
-        
+        self.robot_thread = None
+        self.setpoints = None
+
         self.ui.serverInput.setText('192.168.189.129')
         self.ROBOT_HOST = str(self.ui.serverInput.text())
         self.ui.connectBtn.clicked.connect(self.setup_connection)
         self.ui.disconnectBtn.setEnabled(False)
         self.ui.disconnectBtn.clicked.connect(self.end_connection)
-        
+
         # Real time connection status tracking every second
         self.rt_con_status = False
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.check_connection)
         self.timer.start(1000)
-        
+
         self.ui.powerOnBtn.clicked.connect(self.power_on)
         self.ui.powerOffBtn.clicked.connect(self.power_off)
         self.ui.brakeReleaseBtn.clicked.connect(self.brake_release)
-        
-        # self.ui.startFreeDriveBtn.clicked.connect(self.enable_free_drive)
-        # self.ui.endFreeDriveBtn.clicked.connect(self.disable_free_drive)
+
         self.ui.refreshBtn.clicked.connect(self.refresh_motion_dropdown)
         self.ui.loadMotionBtn.clicked.connect(self.load_position_data)
         self.ui.recordBtn.clicked.connect(self.record_position)
-        self.ui.runRobotBtn.clicked.connect(self.run_robot)
+        self.ui.runRobotBtn.clicked.connect(self.start_robot_thread)
         self.ui.numRepetition.setValue(3)
-        
+
         self.ui.clearOutputBtn.clicked.connect(self.ui.outputResponse.clear)
         self.ui.clearTableBtn.clicked.connect(self.clear_table)
+
+    def start_robot_thread(self):
+        if self.robot_thread is None or not self.robot_thread.isRunning():
+            if self.setpoints:
+                num_repetition = self.ui.numRepetition.value()
+                self.robot_thread = RobotControlThread(self.setp, self.con, self.setpoints, self.watchdog, num_repetition, self)
+                self.robot_thread.update_progress.connect(self.update_progress_bar)
+                self.robot_thread.start()
+                self.ui.outputResponse.append(" [INFO]\tRobot control thread started.")
+            else:
+                self.ui.outputResponse.append(" [ERROR]\tNo setpoints loaded.")
+        else:
+            self.ui.outputResponse.append(" [INFO]\tRobot control thread is already running.")
+
+
+    def update_progress_bar(self, value):
+        self.ui.progressBar.setValue(int(value * 100))
 
     def setup_connection(self):
         try:
@@ -101,7 +158,7 @@ class URCommunication_UI(QMainWindow):
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tConnection Error to {self.ROBOT_HOST}.')
-        
+
     def end_connection(self):
         self.con.disconnect()
         self.s.close()
@@ -202,7 +259,18 @@ class URCommunication_UI(QMainWindow):
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
-        
+    
+    def setp_to_list(self, sp):
+        sp_list = []
+        for i in range(0, 6):
+            sp_list.append(sp.__dict__["input_double_register_%i" % i])
+        return sp_list
+    
+    def list_to_setp(self, sp, list):
+        for i in range(0, 6):
+            sp.__dict__["input_double_register_%i" % i] = list[i]
+        return sp
+    
     def record_position(self):
         try:
             self.create_database_table()
@@ -240,55 +308,9 @@ class URCommunication_UI(QMainWindow):
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
     
-    def setp_to_list(self, sp):
-        sp_list = []
-        for i in range(0, 6):
-            sp_list.append(sp.__dict__["input_double_register_%i" % i])
-        return sp_list
-    
-    def list_to_setp(self, sp, list):
-        for i in range(0, 6):
-            sp.__dict__["input_double_register_%i" % i] = list[i]
-        return sp
-    
-    def run_robot(self):
-        num_repetition = self.ui.numRepetition.value()
-        num_setpoints = len(self.setpoints)
-        movement_count = 0
-        current_setpoint_index = 0
-        move_completed = True
-        keep_running = True
-        
-        while keep_running:
-            if movement_count < num_repetition:
-                state = self.con.receive()
-                if state is None: 
-                    break
-                
-                if move_completed and state.output_int_register_0 == 1:
-                    move_completed = False
-                    current_setpoint_index = (current_setpoint_index + 1) % num_setpoints
-                    new_setpoint = self.setpoints[current_setpoint_index]
-                    self.list_to_setp(self.setp, new_setpoint)
-                    self.con.send(self.setp)
-                    self.watchdog.input_int_register_0 = 1
-                
-                elif not move_completed and state.output_int_register_0 == 0:
-                    move_completed = True
-                    self.watchdog.input_int_register_0 = 0
-                    movement_count += (1/num_setpoints)
-                    print(movement_count)
-                
-                # Kick watchdog
-                self.con.send(self.watchdog)
-            
-            else:
-                break
-    
     def clear_table(self):
         self.ui.motionTable.clearContents()
         self.ui.recordBtn.setEnabled(True)
-
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
