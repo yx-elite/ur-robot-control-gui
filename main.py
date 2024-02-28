@@ -296,7 +296,7 @@ class URCommunication_UI(QMainWindow):
         try:
             selected_motion = self.ui.motionSelect.currentText()
             if selected_motion:
-                confirm = QMessageBox.warning(self, 'Confirm Deletion', f'Deleting "{selected_motion}" will erase all the positional data in it.\nDo you want to continue?',
+                confirm = QMessageBox.warning(self, 'Confirm Deletion - UR Communication Tool', f'Deleting "{selected_motion}" will erase all the positional data in it.\nDo you want to continue?',
                                             QMessageBox.Yes | QMessageBox.No)
                 if confirm == QMessageBox.Yes:
                     self.cur.execute(f'DROP TABLE IF EXISTS {selected_motion}')
