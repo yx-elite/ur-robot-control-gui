@@ -5,7 +5,7 @@ import sqlite3
 import rtde.rtde as rtde
 import rtde.rtde_config as rtde_config
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtWidgets import QMainWindow, QApplication, QTableWidgetItem
+from PyQt5.QtWidgets import QMainWindow, QApplication, QTableWidgetItem, QMessageBox
 from PyQt5.uic import loadUi
 from main_ui import Ui_MainWindow
 
@@ -51,7 +51,7 @@ class URCommunication_UI(QMainWindow):
         
         self.ui.refreshBtn.clicked.connect(self.refresh_motion_dropdown)
         self.ui.loadMotionBtn.clicked.connect(self.load_position_data)
-        self.ui.deleteBtn.setEnabled(False)
+        self.ui.deleteBtn.clicked.connect(self.delete_motion_table)
         self.ui.recordBtn.clicked.connect(self.record_position)
         self.ui.runRobotBtn.clicked.connect(self.run_robot)
         self.ui.numRepetition.setValue(3)
@@ -254,7 +254,6 @@ class URCommunication_UI(QMainWindow):
             self.motions.sort()
             self.ui.motionSelect.clear()
             self.ui.motionSelect.addItems(self.motions)
-            self.ui.deleteBtn.setEnabled(True)
             return True
 
         except Exception as e:
@@ -292,6 +291,22 @@ class URCommunication_UI(QMainWindow):
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+    
+    def delete_motion_table(self):
+        try:
+            selected_motion = self.ui.motionSelect.currentText()
+            if selected_motion:
+                confirm = QMessageBox.warning(self, 'Confirm Deletion', f'Deleting "{selected_motion}" will erase all the positional data in it.\nDo you want to continue?',
+                                            QMessageBox.Yes | QMessageBox.No)
+                if confirm == QMessageBox.Yes:
+                    self.cur.execute(f'DROP TABLE IF EXISTS {selected_motion}')
+                    self.conn.commit()
+                    self.ui.outputResponse.append(f' [ACTION]\tMotion data "{selected_motion}" deleted successfully.')
+                    self.load_database_motion()
+                    self.ui.motionTable.clearContents()
+        
+        except Exception as e:
+            self.ui.outputResponse.append(f' [ERROR]\tError deleting data: {e}.')
         
     def record_position(self):
         try:
