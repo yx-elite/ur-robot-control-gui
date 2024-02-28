@@ -69,8 +69,11 @@ class URCommunication_UI(QMainWindow):
                 print('Failed to start data synchronization')
                 sys.exit()
             
+            # Initialize fields for input and output
             for i in range(6):
                 self.setp.__setattr__(f'input_double_register_{i}', 0)
+            
+            self.watchdog.input_int_register_0 = 0
             
             self.ui.outputResponse.append(f' [INFO]\tRTDE connection initialized successfully.')
             
@@ -236,8 +239,36 @@ class URCommunication_UI(QMainWindow):
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
     
+    def setp_to_list(sp):
+        sp_list = []
+        for i in range(0, 6):
+            sp_list.append(sp.__dict__["input_double_register_%i" % i])
+        return sp_list
+    
+    def list_to_setp(sp, list):
+        for i in range(0, 6):
+            sp.__dict__["input_double_register_%i" % i] = list[i]
+        return sp
+    
     def run_robot(self):
-        pass
+        num_repetition = self.ui.numRepetition.value()
+        num_setpoints = len(self.setpoints)
+        movement_count = 0
+        current_setpoint_index = -1
+        move_complete = True
+        keep_running = True
+        
+        while keep_running:
+            if movement_count < num_repetition:
+                state = self.con.recieve()
+                if state is None: 
+                    break
+                
+                if move_complete and state.output_int_register_0 == 1:
+                    move_complete = False
+                    current_setpoint_index = (current_setpoint_index + 1) % num_setpoints
+                    new_setpoint = self.setpoints[current_setpoint_index]
+                    
     
     def clear_table(self):
         self.ui.motionTable.clearContents()
