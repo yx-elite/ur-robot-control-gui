@@ -42,8 +42,10 @@ class URCommunication_UI(QMainWindow):
         self.ui.refreshBtn.clicked.connect(self.refresh_motion_dropdown)
         self.ui.loadMotionBtn.clicked.connect(self.load_position_data)
         self.ui.recordBtn.clicked.connect(self.record_position)
+        self.ui.runRobotBtn.clicked.connect(self.run_robot)
         
         self.ui.clearOutputBtn.clicked.connect(self.ui.outputResponse.clear)
+        self.ui.clearTableBtn.clicked.connect(self.clear_table)
 
     def setup_connection(self):
         try:
@@ -87,6 +89,7 @@ class URCommunication_UI(QMainWindow):
             self.ui.outputResponse.append(f'\n Successfully connected to {self.ROBOT_HOST}')
             self.ui.outputResponse.append(f' - Polyscope Version\t: {float(polyscope_ver)}')
             self.ui.outputResponse.append(f' - Software Version\t: {float(software_ver)}\n')
+            self.load_database_motion()
             self.ui.connectionStatus.setChecked(True)
             self.ui.connectBtn.setEnabled(False)
             self.ui.disconnectBtn.setEnabled(True)
@@ -155,6 +158,7 @@ class URCommunication_UI(QMainWindow):
             self.cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
             self.motions = self.cur.fetchall()
             self.motions = [name[0] for name in self.motions]
+            self.motions.sort()
             self.ui.motionSelect.clear()
             self.ui.motionSelect.addItems(self.motions)
             return True
@@ -176,6 +180,8 @@ class URCommunication_UI(QMainWindow):
             self.cur.execute(f'''SELECT * FROM {selected_motion}''')
             motion_data = self.cur.fetchall()
             self.ui.outputResponse.append(f' [ACTION]\tMotion "{selected_motion}" successfully loaded.')
+            self.ui.motionTable.clearContents()
+            self.ui.recordBtn.setEnabled(False)
             
             self.setpoints = []
             for row in motion_data:
@@ -193,15 +199,31 @@ class URCommunication_UI(QMainWindow):
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
         
-    
     def record_position(self):
         try:
             self.create_database_table()
+            
             for _ in range(10):
                 # Receive and save the robot position data
                 state = self.con.receive()
-            
             current_pos = state.actual_TCP_pose
+            
+            # Display robot position data in QTableWidget
+            # Find the number of row above with values
+            row_count = 0
+            for row_index in range(self.ui.motionTable.rowCount()):
+                item = self.ui.motionTable.item(row_index, 0)
+                if item and item.text():
+                    row_count += 1
+                else:
+                    break
+
+            self.ui.motionTable.insertRow(row_count)
+            for col_index, col_value in enumerate(current_pos):
+                item = QTableWidgetItem(str(col_value))
+                self.ui.motionTable.setItem(row_count, col_index, item)
+            
+            # Save the robot position data to database
             self.cur.execute(f'''INSERT INTO {self.new_table} (x, y, z, rx, ry, rz)
                                 VALUES (?, ?, ?, ?, ?, ?)''', 
                                 (current_pos[0], current_pos[1], current_pos[2],
@@ -213,6 +235,13 @@ class URCommunication_UI(QMainWindow):
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+    
+    def run_robot(self):
+        pass
+    
+    def clear_table(self):
+        self.ui.motionTable.clearContents()
+        self.ui.recordBtn.setEnabled(True)
 
 
 if __name__ == '__main__':
