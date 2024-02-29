@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'c:\Users\user\Desktop\Github Projects\ur-robot-control-gui\main.ui'
+# Form implementation generated from reading ui file 'main.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -535,6 +535,7 @@ class Ui_MainWindow(object):
         font = QtGui.QFont()
         font.setPointSize(9)
         self.outputResponse.setFont(font)
+        self.outputResponse.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
         self.outputResponse.setObjectName("outputResponse")
         self.verticalLayout_2.addWidget(self.outputResponse)
         spacerItem7 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
@@ -596,3 +597,13 @@ class Ui_MainWindow(object):
         self.outputLabel.setText(_translate("MainWindow", "System Output"))
         self.clearOutputBtn.setText(_translate("MainWindow", "Clear Output"))
         self.clearTableBtn.setText(_translate("MainWindow", "Clear Table"))
+
+
+if __name__ == "__main__":
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+    MainWindow = QtWidgets.QMainWindow()
+    ui = Ui_MainWindow()
+    ui.setupUi(MainWindow)
+    MainWindow.show()
+    sys.exit(app.exec_())
