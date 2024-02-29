@@ -28,7 +28,7 @@ class RobotWorkerThread(QThread):
         setp: Object representing setpoint data
         watchdog: Object representing watchdog status
     """
-    track = pyqtSignal(list)
+    next_setp = pyqtSignal(list)
     progress = pyqtSignal(float)
     finished = pyqtSignal()
     
@@ -50,6 +50,8 @@ class RobotWorkerThread(QThread):
         move_completed = True
         keep_running = True
         
+        self.progress.emit(movement_count)
+        
         while keep_running:
             # Add additional setpoint value to trigger last position
             if movement_count < self.num_repetition + (1/num_setpoints):
@@ -64,7 +66,7 @@ class RobotWorkerThread(QThread):
                         self.parent.list_to_setp(self.setp, last_setpoint)
                         self.con.send(self.setp)
                         self.watchdog.input_int_register_0 = 1
-                        print(last_setpoint)
+                        self.next_setp.emit(last_setpoint)
                         time.sleep(3)
                         break
                     else:
@@ -74,13 +76,13 @@ class RobotWorkerThread(QThread):
                         self.parent.list_to_setp(self.setp, new_setpoint)
                         self.con.send(self.setp)
                         self.watchdog.input_int_register_0 = 1
-                        print(new_setpoint)
+                        self.next_setp.emit(new_setpoint)
                 
                 elif not move_completed and state.output_int_register_0 == 0:
                     move_completed = True
                     self.watchdog.input_int_register_0 = 0
                     movement_count += (1/num_setpoints)
-                    print(movement_count)
+                    self.progress.emit(movement_count)
                 
                 self.con.send(self.watchdog)
             
@@ -105,10 +107,10 @@ class URCommunication_UI(QMainWindow):
         self.ui.disconnectBtn.clicked.connect(self.end_connection)
         
         # Real time connection status tracking every second
-        # self.rt_con_status = False
-        # self.timer = QTimer(self)
-        # self.timer.timeout.connect(self.check_connection)
-        # self.timer.start(1000)
+        self.rt_con_status = False
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.check_connection)
+        self.timer.start(1000)
         
         self.ui.powerOnBtn.clicked.connect(self.power_on)
         self.ui.powerOffBtn.clicked.connect(self.power_off)
@@ -139,22 +141,15 @@ class URCommunication_UI(QMainWindow):
         try:
             self.s.send((command + '\n').encode())
             response = self.s.recv(1024).decode()
-            self.ui.outputResponse.append(f' [ACTION]\t{response[:-1]}')
             return response
+        
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}')
             return None
-
-    def setup_connection(self):
+    
+    def initialize_rtde_connection(self):
         try:
             logging.info('Initializing RTDE connection...')
-            logging.info('Initializing dashboard server connection...')
-            logging.info('Initializing database connection...')
-            
-            # ------------ Initialize rtde connection ------------
-            self.keep_running = True
-            logging.getLogger().setLevel(logging.INFO)
-            
             conf = rtde_config.ConfigFile(config_filename)
             state_names, state_types = conf.get_recipe('state')
             setp_names, setp_types = conf.get_recipe('setp') 
@@ -171,16 +166,21 @@ class URCommunication_UI(QMainWindow):
                 self.logger.error('Failed to start data synchronization')
                 sys.exit()
             
-            # Initialize fields for input and output
             for i in range(6):
                 self.setp.__setattr__(f'input_double_register_{i}', 0)
             
             self.watchdog.input_int_register_0 = 0
             
             logging.info('RTDE connection initialized successfully.')
-            self.ui.outputResponse.append(f' [INFO]\tRTDE connection initialized successfully.')
+            return True
             
-            # ------------ Initialize dashboard server connection ------------
+        except Exception as e:
+            logging.error(f'Error initializing RTDE connection: {e}.')
+            return False
+
+    def initialize_dashboard_server_connection(self):
+        try:
+            logging.info('Initializing dashboard server connection...')
             self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.s.connect((self.ROBOT_HOST, ROBOT_PORT_2))
             self.s.recv(1024).decode()
@@ -190,26 +190,52 @@ class URCommunication_UI(QMainWindow):
             serial_num = self.s.recv(1024).decode()
             self.s.send(('get robot model' + '\n').encode())
             robot_model = self.s.recv(1024).decode()
-            self.ui.outputResponse.append(f' [INFO]\tDashboard server connection initialized successfully.')
             
-            # ------------ Initialize dashboard server connection ------------
+            logging.info('Dashboard server connection initialized successfully.')
+            return True
+            
+        except Exception as e:
+            logging.error(f'Error initializing dashboard server connection: {e}.')
+            return False
+
+    def initialize_database_connection(self):
+        try:
+            logging.info('Initializing database connection...')
             self.conn = sqlite3.connect(motion_database)
             self.cur = self.conn.cursor()
-            self.ui.outputResponse.append(f' [INFO]\tDatabase connection initialized successfully.')
+            logging.info('Database connection initialized successfully.')
+            return True
             
-            # ------------ Overall status display --------------------
-            self.ui.outputResponse.append(f'\n Successfully connected to robot host "{self.ROBOT_HOST}".')
-            self.ui.outputResponse.append(f' - Polyscope Version\t: {str(polyscope_ver[:-1])}')
-            self.ui.outputResponse.append(f' - Serial Number\t: {str(serial_num[:-1])}')
-            self.ui.outputResponse.append(f' - UR Robot Model\t: {str(robot_model[:-1])}\n')
-            self.load_database_motion()
+        except Exception as e:
+            logging.error(f'Error initializing database connection: {e}.')
+            return False
+
+    # In your setup_connection method:
+    def setup_connection(self):
+        self.ui.serverInput.setText('192.168.189.129')
+        self.ROBOT_HOST = str(self.ui.serverInput.text())
+        
+        rtde_connection_success = self.initialize_rtde_connection()
+        dashboard_connection_success = self.initialize_dashboard_server_connection()
+        database_connection_success = self.initialize_database_connection()
+        
+        if rtde_connection_success and dashboard_connection_success and database_connection_success:
+            polyscope_ver = self.send_dashboard_server_command('PolyScopeVersion')
+            serial_num = self.send_dashboard_server_command('get serial number')
+            robot_model = self.send_dashboard_server_command('get robot model')
+            
+            self.ui.outputResponse.append(f' [INFO]\tSuccessfully connected to robot host "{self.ROBOT_HOST}".')
+            self.ui.outputResponse.append(f' [INFO]\tPolyscope Version: {polyscope_ver[:-1]}')
+            self.ui.outputResponse.append(f' [INFO]\tSerial Number: {serial_num[:-1]}')
+            self.ui.outputResponse.append(f' [INFO]\tRobot Model: {robot_model[:-1]}\n')
+            
             self.ui.connectionStatus.setChecked(True)
             self.ui.connectBtn.setEnabled(False)
             self.ui.disconnectBtn.setEnabled(True)
             self.rt_con_status = True
-        
-        except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tConnection Error to {self.ROBOT_HOST}.')
+        else:
+            self.ui.outputResponse.append(f' [ERROR]\tFailed to establish connection to {self.ROBOT_HOST}.')
+
         
     def end_connection(self):
         self.con.disconnect()
@@ -223,32 +249,40 @@ class URCommunication_UI(QMainWindow):
     
     def check_connection(self):
         if self.rt_con_status:
-            self.ui.connectionStatus.setChecked(True)
-            logging.info("Data synchronization successful.")
+            rtde_connection_success = self.initialize_rtde_connection()
+            dashboard_connection_success = self.initialize_dashboard_server_connection()
+            database_connection_success = self.initialize_database_connection()
+            
+            if rtde_connection_success and dashboard_connection_success and database_connection_success:
+                self.ui.connectionStatus.setChecked(True)
+                logging.info("Data synchronization successful.")
         else:
             self.ui.connectionStatus.setChecked(False)
             logging.error("Data synchronization not established.")
     
     def power_on(self):
         try:
-            self.ui.outputResponse.append(' [ACTION]\tButton "Power On" is triggered successfully.')
-            self.send_dashboard_server_command('power on')
+            response = self.send_dashboard_server_command('power on')
+            self.ui.outputResponse.append(' [INFO]\tButton "Power On" is triggered successfully.')
+            self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
     
     def power_off(self):
         try:
+            response = self.send_dashboard_server_command('power off')
             self.ui.outputResponse.append(' [ACTION]\tButton "Power Off" is triggered successfully.')
-            self.send_dashboard_server_command('power off')
+            self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
     
     def brake_release(self):
         try:
+            response = self.send_dashboard_server_command('brake release')
             self.ui.outputResponse.append(' [ACTION]\tButton "Brake Release" is triggered successfully.')
-            self.send_dashboard_server_command('brake release')
+            self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
@@ -257,9 +291,11 @@ class URCommunication_UI(QMainWindow):
         try:
             urp_file = str(self.ui.urpFileInput.text())
             load_urp_resp = self.send_dashboard_server_command(f'load {urp_file}')
+            self.ui.outputResponse.append(f' [INFO]\t{load_urp_resp[:-1]}\n')
             
             if 'Loading' in load_urp_resp:
-                self.send_dashboard_server_command('get loaded program')
+                response = self.send_dashboard_server_command('get loaded program')
+                self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
             else:
                 pass
         
@@ -268,48 +304,54 @@ class URCommunication_UI(QMainWindow):
     
     def play_robot(self):
         try:
+            response = self.send_dashboard_server_command('play')
             self.ui.outputResponse.append(' [ACTION]\tButton "Play Robot" is triggered successfully.')
-            self.send_dashboard_server_command('play')
+            self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
     
     def stop_robot(self):
         try:
+            response = self.send_dashboard_server_command('stop')
             self.ui.outputResponse.append(' [ACTION]\tButton "Stop Robot" is triggered successfully.')
-            self.send_dashboard_server_command('stop')
+            self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
     
     def pause_robot(self):
         try:
+            response = self.send_dashboard_server_command('pause')
             self.ui.outputResponse.append(' [ACTION]\tButton "Pause Robot" is triggered successfully.')
-            self.send_dashboard_server_command('pause')
+            self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
     
     def shutdown_robot(self):
         try:
+            response = self.send_dashboard_server_command('shutdown')
             self.ui.outputResponse.append(' [ACTION]\tButton "Shutdown Robot" is triggered successfully.')
-            self.send_dashboard_server_command('shutdown')
+            self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
     
     def unlock_protective_stop(self):
         try:
+            response = self.send_dashboard_server_command('unlock protective stop')
             self.ui.outputResponse.append(' [ACTION]\tButton "Unlock Protective Stop" is triggered successfully.')
-            self.send_dashboard_server_command('unlock protective stop')
+            self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
     
     def close_safety_popup(self):
         try:
+            response = self.send_dashboard_server_command('close safety popup')
             self.ui.outputResponse.append(' [ACTION]\tButton "Close Safety Popup" is triggered successfully.')
-            self.send_dashboard_server_command('close safety popup')
+            self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
@@ -363,7 +405,9 @@ class URCommunication_UI(QMainWindow):
                 # Change data type from tuple to list
                 setpoint = list(row[1:])
                 self.setpoints.append(setpoint)
-                self.ui.outputResponse.append(f' [INFO]\tSetp {str(row[0])}: {str(setpoint)}')
+                self.ui.outputResponse.append(f' [INFO]\tSetpoint {str(row[0])}: {str(setpoint)}')
+            
+            self.ui.outputResponse.append('')
             
             # Arrange the position data into QTableWidget
             for row_index, row_data in enumerate(self.setpoints):
@@ -375,8 +419,8 @@ class URCommunication_UI(QMainWindow):
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
     
     def delete_motion_table(self):
+        selected_motion = self.ui.motionSelect.currentText()
         try:
-            selected_motion = self.ui.motionSelect.currentText()
             if selected_motion:
                 confirm = QMessageBox.warning(self, 'Confirm Deletion - UR Communication Tool', f'Deleting "{selected_motion}" will erase all the positional data in it.\nDo you want to continue?',
                                             QMessageBox.Yes | QMessageBox.No)
@@ -440,20 +484,24 @@ class URCommunication_UI(QMainWindow):
             sp.__dict__["input_double_register_%i" % i] = list[i]
         return sp
     
-    def handle_test(self, new_setpoint):
-        self.ui.outputResponse.append(f'Next setp: {new_setpoint}')
+    def handle_next_setpoint(self, next_setpoint):
+        self.ui.outputResponse.append(f' [INFO]\tNext Setpoint: {next_setpoint}\n')
     
     def handle_progress_update(self, movement_count):
-        self.ui.outputResponse.append(f'progress {movement_count}')
+        total_repetition = self.ui.numRepetition.value()
+        progress_percentage = (movement_count/total_repetition) * 100
+        self.ui.progressBar.setValue(int(progress_percentage))
+        self.ui.outputResponse.append(f' [INFO]\tCurrent Progress: {movement_count:.2f} / {self.ui.numRepetition.value():.2f}')
     
     def handle_robot_movement_finished(self):
+        selected_motion = self.ui.motionSelect.currentText()
         self.ui.runRobotBtn.setEnabled(True)
-        print("Robot movement completed.")
+        self.ui.outputResponse.append(f' [INFO]\tRobot movement for "{selected_motion}" completed.\n')
     
     def run_robot(self):
         self.worker = RobotWorkerThread(self, self.setpoints, self.ui.numRepetition.value(), self.con, self.setp, self.watchdog)
-        #self.worker.track.connect(self.handle_test)
-        #self.worker.progress.connect(self.handle_progress_update)
+        self.worker.next_setp.connect(self.handle_next_setpoint)
+        self.worker.progress.connect(self.handle_progress_update)
         self.worker.finished.connect(self.handle_robot_movement_finished)
         self.worker.start()
         self.ui.runRobotBtn.setEnabled(False)
