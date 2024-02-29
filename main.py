@@ -2,9 +2,10 @@ import sys
 import logging
 import socket
 import sqlite3
+import time
 import rtde.rtde as rtde
 import rtde.rtde_config as rtde_config
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtWidgets import QMainWindow, QApplication, QTableWidgetItem, QMessageBox
 from PyQt5.uic import loadUi
 from main_ui import Ui_MainWindow
@@ -15,6 +16,75 @@ ROBOT_PORT_2 = 29999    # Socket
 config_filename = 'config/main-config.xml'
 motion_database = 'data/motion-data.db'
 UR_script = 'rtde_control_loop.urp'
+
+class RobotWorkerThread(QThread):
+    """
+    A separate worker thread for robot controlling.
+    
+    Attributes:
+        setpoints (list): List of setpoints for robot movements
+        num_repetition (int): Number of repetitions for each setpoint
+        con: Connection object for communication with the robot
+        setp: Object representing setpoint data
+        watchdog: Object representing watchdog status
+    """
+    track = pyqtSignal(list)
+    progress = pyqtSignal(float)
+    finished = pyqtSignal()
+    
+    def __init__(self, setpoints, num_repetition, con, setp, watchdog, parent=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.setpoints = setpoints
+        self.num_repetition = num_repetition
+        self.con = con
+        self.setp = setp
+        self.watchdog = watchdog
+    
+    def run(self):
+        """Main method executed by the worker thread"""
+        
+        num_setpoints = len(self.setpoints)
+        movement_count = 0
+        current_setpoint_index = -1
+        move_completed = True
+        keep_running = True
+        
+        while keep_running:
+            if movement_count < self.num_repetition:
+                state = self.con.receive()
+                if state is None:
+                    break
+                
+                if move_completed and state.output_int_register_0 == 1:
+                    move_completed = False
+                    current_setpoint_index = (current_setpoint_index + 1) % num_setpoints
+                    new_setpoint = self.setpoints[current_setpoint_index]
+                    self.parent.list_to_setp(self.setp, new_setpoint)
+                    self.con.send(self.setp)
+                    self.watchdog.input_int_register_0 = 1
+                    print(new_setpoint)
+                    
+                
+                elif not move_completed and state.output_int_register_0 == 0:
+                    move_completed = True
+                    self.watchdog.input_int_register_0 = 0
+                    movement_count += (1/num_setpoints)
+                    print(movement_count)
+                    time.sleep(1)
+                
+                self.con.send(self.watchdog)
+            
+            else:
+                time.sleep(5)
+                break
+        
+        # Move back to first position before ending
+        last_setpoint = self.setpoints[0]
+        
+        
+        self.finished.emit()
+
 
 class URCommunication_UI(QMainWindow):
     def __init__(self):
@@ -29,10 +99,10 @@ class URCommunication_UI(QMainWindow):
         self.ui.disconnectBtn.clicked.connect(self.end_connection)
         
         # Real time connection status tracking every second
-        self.rt_con_status = False
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.check_connection)
-        self.timer.start(1000)
+        # self.rt_con_status = False
+        # self.timer = QTimer(self)
+        # self.timer.timeout.connect(self.check_connection)
+        # self.timer.start(1000)
         
         self.ui.powerOnBtn.clicked.connect(self.power_on)
         self.ui.powerOffBtn.clicked.connect(self.power_off)
@@ -186,7 +256,7 @@ class URCommunication_UI(QMainWindow):
                 self.send_dashboard_server_command('get loaded program')
             else:
                 pass
-                
+        
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
     
@@ -362,43 +432,28 @@ class URCommunication_UI(QMainWindow):
             sp.__dict__["input_double_register_%i" % i] = list[i]
         return sp
     
+    def handle_test(self, new_setpoint):
+        self.ui.outputResponse.append(f'Next setp: {new_setpoint}')
+    
+    def handle_progress_update(self, movement_count):
+        self.ui.outputResponse.append(f'progress {movement_count}')
+    
+    def handle_robot_movement_finished(self):
+        self.ui.runRobotBtn.setEnabled(True)
+        print("Robot movement completed.")
+    
     def run_robot(self):
-        num_repetition = self.ui.numRepetition.value()
-        num_setpoints = len(self.setpoints)
-        movement_count = 0
-        current_setpoint_index = 0
-        move_completed = True
-        keep_running = True
-        
-        while keep_running:
-            if movement_count < num_repetition:
-                state = self.con.receive()
-                if state is None: 
-                    break
-                
-                if move_completed and state.output_int_register_0 == 1:
-                    move_completed = False
-                    current_setpoint_index = (current_setpoint_index + 1) % num_setpoints
-                    new_setpoint = self.setpoints[current_setpoint_index]
-                    self.list_to_setp(self.setp, new_setpoint)
-                    self.con.send(self.setp)
-                    self.watchdog.input_int_register_0 = 1
-                
-                elif not move_completed and state.output_int_register_0 == 0:
-                    move_completed = True
-                    self.watchdog.input_int_register_0 = 0
-                    movement_count += (1/num_setpoints)
-                    print(movement_count)
-                
-                # Kick watchdog
-                self.con.send(self.watchdog)
-            
-            else:
-                break
+        self.worker = RobotWorkerThread(self.setpoints, self.ui.numRepetition.value(), self.con, self.setp, self.watchdog, self)
+        #self.worker.track.connect(self.handle_test)
+        #self.worker.progress.connect(self.handle_progress_update)
+        self.worker.finished.connect(self.handle_robot_movement_finished)
+        self.worker.start()
+        self.ui.runRobotBtn.setEnabled(False)
     
     def clear_table(self):
         self.ui.motionTable.clearContents()
         self.ui.recordBtn.setEnabled(True)
+
 
 
 if __name__ == '__main__':
