@@ -32,7 +32,7 @@ class RobotWorkerThread(QThread):
     progress = pyqtSignal(float)
     finished = pyqtSignal()
     
-    def __init__(self, setpoints, num_repetition, con, setp, watchdog, parent=None):
+    def __init__(self, parent, setpoints, num_repetition, con, setp, watchdog):
         super().__init__(parent)
         self.parent = parent
         self.setpoints = setpoints
@@ -51,27 +51,36 @@ class RobotWorkerThread(QThread):
         keep_running = True
         
         while keep_running:
-            if movement_count < self.num_repetition:
+            # Add additional setpoint value to trigger last position
+            if movement_count < self.num_repetition + (1/num_setpoints):
                 state = self.con.receive()
                 if state is None:
                     break
                 
                 if move_completed and state.output_int_register_0 == 1:
-                    move_completed = False
-                    current_setpoint_index = (current_setpoint_index + 1) % num_setpoints
-                    new_setpoint = self.setpoints[current_setpoint_index]
-                    self.parent.list_to_setp(self.setp, new_setpoint)
-                    self.con.send(self.setp)
-                    self.watchdog.input_int_register_0 = 1
-                    print(new_setpoint)
-                    
+                    if self.num_repetition - movement_count < 0.1 and self.parent.setp_to_list(self.setp) != self.setpoints[0]:
+                        # Move back to first position before ending
+                        last_setpoint = self.setpoints[0]
+                        self.parent.list_to_setp(self.setp, last_setpoint)
+                        self.con.send(self.setp)
+                        self.watchdog.input_int_register_0 = 1
+                        print(last_setpoint)
+                        time.sleep(3)
+                        break
+                    else:
+                        move_completed = False
+                        current_setpoint_index = (current_setpoint_index + 1) % num_setpoints
+                        new_setpoint = self.setpoints[current_setpoint_index]
+                        self.parent.list_to_setp(self.setp, new_setpoint)
+                        self.con.send(self.setp)
+                        self.watchdog.input_int_register_0 = 1
+                        print(new_setpoint)
                 
                 elif not move_completed and state.output_int_register_0 == 0:
                     move_completed = True
                     self.watchdog.input_int_register_0 = 0
                     movement_count += (1/num_setpoints)
                     print(movement_count)
-                    time.sleep(1)
                 
                 self.con.send(self.watchdog)
             
@@ -79,10 +88,7 @@ class RobotWorkerThread(QThread):
                 time.sleep(5)
                 break
         
-        # Move back to first position before ending
-        last_setpoint = self.setpoints[0]
-        
-        
+        # Emit the completion signal
         self.finished.emit()
 
 
@@ -421,13 +427,15 @@ class URCommunication_UI(QMainWindow):
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
     
-    def setp_to_list(self, sp):
+    @staticmethod
+    def setp_to_list(sp):
         sp_list = []
         for i in range(0, 6):
             sp_list.append(sp.__dict__["input_double_register_%i" % i])
         return sp_list
     
-    def list_to_setp(self, sp, list):
+    @staticmethod
+    def list_to_setp(sp, list):
         for i in range(0, 6):
             sp.__dict__["input_double_register_%i" % i] = list[i]
         return sp
@@ -443,7 +451,7 @@ class URCommunication_UI(QMainWindow):
         print("Robot movement completed.")
     
     def run_robot(self):
-        self.worker = RobotWorkerThread(self.setpoints, self.ui.numRepetition.value(), self.con, self.setp, self.watchdog, self)
+        self.worker = RobotWorkerThread(self, self.setpoints, self.ui.numRepetition.value(), self.con, self.setp, self.watchdog)
         #self.worker.track.connect(self.handle_test)
         #self.worker.progress.connect(self.handle_progress_update)
         self.worker.finished.connect(self.handle_robot_movement_finished)
