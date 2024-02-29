@@ -17,7 +17,7 @@ config_filename = 'config/main-config.xml'
 motion_database = 'data/motion-data.db'
 UR_script = 'rtde_control_loop.urp'
 
-class RobotWorkerThread(QThread):
+class RobotControlThread(QThread):
     """
     A separate worker thread for robot controlling.
     
@@ -31,6 +31,7 @@ class RobotWorkerThread(QThread):
     next_setp = pyqtSignal(list)
     progress = pyqtSignal(float)
     finished = pyqtSignal()
+    error = pyqtSignal(str)
     
     def __init__(self, parent, setpoints, num_repetition, con, setp, watchdog):
         super().__init__(parent)
@@ -40,6 +41,7 @@ class RobotWorkerThread(QThread):
         self.con = con
         self.setp = setp
         self.watchdog = watchdog
+        self.running = True         # Flag to control thread execution
     
     def run(self):
         """Main method executed by the worker thread"""
@@ -52,47 +54,59 @@ class RobotWorkerThread(QThread):
         
         self.progress.emit(movement_count)
         
-        while keep_running:
-            # Add additional setpoint value to trigger last position
-            if movement_count < self.num_repetition + (1/num_setpoints):
-                state = self.con.receive()
-                if state is None:
+        try:
+            while keep_running:
+                # Use to kill the thread for stopping
+                if not self.running:
                     break
                 
-                if move_completed and state.output_int_register_0 == 1:
-                    if self.num_repetition - movement_count < 0.1 and self.parent.setp_to_list(self.setp) != self.setpoints[0]:
-                        # Move back to first position before ending
-                        last_setpoint = self.setpoints[0]
-                        self.parent.list_to_setp(self.setp, last_setpoint)
-                        self.con.send(self.setp)
-                        self.watchdog.input_int_register_0 = 1
-                        self.next_setp.emit(last_setpoint)
-                        time.sleep(3)
+                # Add additional setpoint value to trigger last position
+                if movement_count < self.num_repetition + (1/num_setpoints):
+                    state = self.con.receive()
+                    if state is None:
                         break
-                    else:
-                        move_completed = False
-                        current_setpoint_index = (current_setpoint_index + 1) % num_setpoints
-                        new_setpoint = self.setpoints[current_setpoint_index]
-                        self.parent.list_to_setp(self.setp, new_setpoint)
-                        self.con.send(self.setp)
-                        self.watchdog.input_int_register_0 = 1
-                        self.next_setp.emit(new_setpoint)
+                    
+                    if move_completed and state.output_int_register_0 == 1:
+                        if self.num_repetition - movement_count < 0.1 and self.parent.setp_to_list(self.setp) != self.setpoints[0]:
+                            # Move back to first position before ending
+                            last_setpoint = self.setpoints[0]
+                            self.parent.list_to_setp(self.setp, last_setpoint)
+                            self.con.send(self.setp)
+                            self.watchdog.input_int_register_0 = 1
+                            self.next_setp.emit(last_setpoint)
+                            time.sleep(3)
+                            break
+                        else:
+                            move_completed = False
+                            current_setpoint_index = (current_setpoint_index + 1) % num_setpoints
+                            new_setpoint = self.setpoints[current_setpoint_index]
+                            self.parent.list_to_setp(self.setp, new_setpoint)
+                            self.con.send(self.setp)
+                            self.watchdog.input_int_register_0 = 1
+                            self.next_setp.emit(new_setpoint)
+                    
+                    elif not move_completed and state.output_int_register_0 == 0:
+                        move_completed = True
+                        self.watchdog.input_int_register_0 = 0
+                        movement_count += (1/num_setpoints)
+                        self.progress.emit(movement_count)
+                    
+                    self.con.send(self.watchdog)
                 
-                elif not move_completed and state.output_int_register_0 == 0:
-                    move_completed = True
-                    self.watchdog.input_int_register_0 = 0
-                    movement_count += (1/num_setpoints)
-                    self.progress.emit(movement_count)
-                
-                self.con.send(self.watchdog)
+                else:
+                    time.sleep(5)
+                    break
             
-            else:
-                time.sleep(5)
-                break
+        except Exception as e:
+            logging.error(f'Connection Reset Error: {e}')
+            self.error.emit(f'Connection Reset Error: {e}\n')
         
         # Emit the completion signal
         self.finished.emit()
-
+    
+    def stop(self):
+        """Method to stop the worker thread"""
+        self.running = False
 
 class URCommunication_UI(QMainWindow):
     def __init__(self):
@@ -107,6 +121,7 @@ class URCommunication_UI(QMainWindow):
         self.ui.disconnectBtn.clicked.connect(self.end_connection)
         
         # Real time connection status tracking every second
+        self.con = None
         self.rt_con_status = False
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.check_connection)
@@ -124,6 +139,7 @@ class URCommunication_UI(QMainWindow):
         self.ui.stopBtn.clicked.connect(self.stop_robot)
         self.ui.pauseBtn.clicked.connect(self.pause_robot)
         self.ui.shutDownBtn.clicked.connect(self.shutdown_robot)
+        self.ui.shutDownBtn.setEnabled(False)
         self.ui.unlockBtn.clicked.connect(self.unlock_protective_stop)
         self.ui.closePopUpBtn.clicked.connect(self.close_safety_popup)
         
@@ -131,7 +147,7 @@ class URCommunication_UI(QMainWindow):
         self.ui.loadMotionBtn.clicked.connect(self.load_position_data)
         self.ui.deleteBtn.clicked.connect(self.delete_motion_table)
         self.ui.recordBtn.clicked.connect(self.record_position)
-        self.ui.runRobotBtn.clicked.connect(self.run_robot)
+        self.ui.runRobotBtn.clicked.connect(self.run_robot_command)
         self.ui.numRepetition.setValue(3)
         
         self.ui.clearOutputBtn.clicked.connect(self.ui.outputResponse.clear)
@@ -175,7 +191,7 @@ class URCommunication_UI(QMainWindow):
             return True
             
         except Exception as e:
-            logging.error(f'Error initializing RTDE connection: {e}.')
+            logging.error(f'Error initializing RTDE connection: {e}.\n')
             return False
 
     def initialize_dashboard_server_connection(self):
@@ -195,7 +211,7 @@ class URCommunication_UI(QMainWindow):
             return True
             
         except Exception as e:
-            logging.error(f'Error initializing dashboard server connection: {e}.')
+            logging.error(f'Error initializing dashboard server connection: {e}.\n')
             return False
 
     def initialize_database_connection(self):
@@ -207,7 +223,7 @@ class URCommunication_UI(QMainWindow):
             return True
             
         except Exception as e:
-            logging.error(f'Error initializing database connection: {e}.')
+            logging.error(f'Error initializing database connection: {e}.\n')
             return False
 
     # In your setup_connection method:
@@ -229,6 +245,7 @@ class URCommunication_UI(QMainWindow):
             self.ui.outputResponse.append(f' [INFO]\tSerial Number: {serial_num[:-1]}')
             self.ui.outputResponse.append(f' [INFO]\tRobot Model: {robot_model[:-1]}\n')
             
+            self.load_database_motion()
             self.ui.connectionStatus.setChecked(True)
             self.ui.connectBtn.setEnabled(False)
             self.ui.disconnectBtn.setEnabled(True)
@@ -249,16 +266,18 @@ class URCommunication_UI(QMainWindow):
     
     def check_connection(self):
         if self.rt_con_status:
-            rtde_connection_success = self.initialize_rtde_connection()
-            dashboard_connection_success = self.initialize_dashboard_server_connection()
-            database_connection_success = self.initialize_database_connection()
+            if not self.con.is_connected():
+                logging.error('RTDE connection lost. Reconnecting...')
+                self.initialize_rtde_connection()
+                print('RTDE reconnected.')
             
-            if rtde_connection_success and dashboard_connection_success and database_connection_success:
-                self.ui.connectionStatus.setChecked(True)
-                logging.info("Data synchronization successful.")
+            self.initialize_dashboard_server_connection()
+            self.initialize_database_connection()
+            self.ui.connectionStatus.setChecked(True)
+        
         else:
             self.ui.connectionStatus.setChecked(False)
-            logging.error("Data synchronization not established.")
+            logging.error("Data synchronization is not established yet.")
     
     def power_on(self):
         try:
@@ -267,31 +286,31 @@ class URCommunication_UI(QMainWindow):
             self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
     
     def power_off(self):
         try:
             response = self.send_dashboard_server_command('power off')
-            self.ui.outputResponse.append(' [ACTION]\tButton "Power Off" is triggered successfully.')
+            self.ui.outputResponse.append(' [INFO]\tButton "Power Off" is triggered successfully.')
             self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
     
     def brake_release(self):
         try:
             response = self.send_dashboard_server_command('brake release')
-            self.ui.outputResponse.append(' [ACTION]\tButton "Brake Release" is triggered successfully.')
+            self.ui.outputResponse.append(' [INFO]\tButton "Brake Release" is triggered successfully.')
             self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
     
     def load_urp_file(self):
         try:
             urp_file = str(self.ui.urpFileInput.text())
             load_urp_resp = self.send_dashboard_server_command(f'load {urp_file}')
-            self.ui.outputResponse.append(f' [INFO]\t{load_urp_resp[:-1]}\n')
+            self.ui.outputResponse.append(f' [INFO]\t{load_urp_resp[:-1]}')
             
             if 'Loading' in load_urp_resp:
                 response = self.send_dashboard_server_command('get loaded program')
@@ -300,61 +319,62 @@ class URCommunication_UI(QMainWindow):
                 pass
         
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
     
     def play_robot(self):
         try:
             response = self.send_dashboard_server_command('play')
-            self.ui.outputResponse.append(' [ACTION]\tButton "Play Robot" is triggered successfully.')
+            self.ui.outputResponse.append(' [INFO]\tButton "Play Robot" is triggered successfully.')
             self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
     
     def stop_robot(self):
         try:
             response = self.send_dashboard_server_command('stop')
-            self.ui.outputResponse.append(' [ACTION]\tButton "Stop Robot" is triggered successfully.')
+            self.ui.outputResponse.append(' [INFO]\tButton "Stop Robot" is triggered successfully.')
             self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
+            self.ui.runRobotBtn.setEnabled(True)
         
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
     
     def pause_robot(self):
         try:
             response = self.send_dashboard_server_command('pause')
-            self.ui.outputResponse.append(' [ACTION]\tButton "Pause Robot" is triggered successfully.')
+            self.ui.outputResponse.append(' [INFO]\tButton "Pause Robot" is triggered successfully.')
             self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
     
     def shutdown_robot(self):
         try:
             response = self.send_dashboard_server_command('shutdown')
-            self.ui.outputResponse.append(' [ACTION]\tButton "Shutdown Robot" is triggered successfully.')
+            self.ui.outputResponse.append(' [INFO]\tButton "Shutdown Robot" is triggered successfully.')
             self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
     
     def unlock_protective_stop(self):
         try:
             response = self.send_dashboard_server_command('unlock protective stop')
-            self.ui.outputResponse.append(' [ACTION]\tButton "Unlock Protective Stop" is triggered successfully.')
+            self.ui.outputResponse.append(' [INFO]\tButton "Unlock Protective Stop" is triggered successfully.')
             self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
     
     def close_safety_popup(self):
         try:
             response = self.send_dashboard_server_command('close safety popup')
-            self.ui.outputResponse.append(' [ACTION]\tButton "Close Safety Popup" is triggered successfully.')
+            self.ui.outputResponse.append(' [INFO]\tButton "Close Safety Popup" is triggered successfully.')
             self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
     
     def create_database_table(self):
         # Create new motion table
@@ -379,15 +399,17 @@ class URCommunication_UI(QMainWindow):
             self.ui.motionSelect.clear()
             self.ui.motionSelect.addItems(self.motions)
             return True
-
+        
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
             return False
     
     def refresh_motion_dropdown(self):
-        if self.load_database_motion():
-            self.ui.outputResponse.append(f' [ACTION]\tMotion type successfully refreshed.')
-            self.ui.outputResponse.append(f' [INFO]\t{self.motions}')
+        if not self.ui.runRobotBtn.isEnabled():
+            self.stop_robot_command()
+        elif self.load_database_motion():
+            self.ui.outputResponse.append(f' [INFO]\tMotion type successfully refreshed.')
+            self.ui.outputResponse.append(f' [INFO]\tAvailable Motions: {self.motions}\n')
         else:
             self.ui.outputResponse.append(f' [ERROR]\tError loading motion table.')
     
@@ -396,7 +418,7 @@ class URCommunication_UI(QMainWindow):
             selected_motion = self.ui.motionSelect.currentText()
             self.cur.execute(f'''SELECT * FROM {selected_motion}''')
             motion_data = self.cur.fetchall()
-            self.ui.outputResponse.append(f' [ACTION]\tMotion "{selected_motion}" successfully loaded.')
+            self.ui.outputResponse.append(f' [INFO]\tMotion "{selected_motion}" successfully loaded.')
             self.ui.motionTable.clearContents()
             self.ui.recordBtn.setEnabled(False)
             
@@ -416,7 +438,7 @@ class URCommunication_UI(QMainWindow):
                     self.ui.motionTable.setItem(row_index, col_index, QTableWidgetItem(str(f'{col_value}')))
         
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
     
     def delete_motion_table(self):
         selected_motion = self.ui.motionSelect.currentText()
@@ -427,12 +449,12 @@ class URCommunication_UI(QMainWindow):
                 if confirm == QMessageBox.Yes:
                     self.cur.execute(f'DROP TABLE IF EXISTS {selected_motion}')
                     self.conn.commit()
-                    self.ui.outputResponse.append(f' [ACTION]\tMotion data "{selected_motion}" deleted successfully.')
+                    self.ui.outputResponse.append(f' [INFO]\tMotion data "{selected_motion}" deleted successfully.')
                     self.load_database_motion()
                     self.ui.motionTable.clearContents()
         
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError deleting data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError deleting data: {e}.\n')
         
     def record_position(self):
         try:
@@ -464,12 +486,12 @@ class URCommunication_UI(QMainWindow):
                                 (current_pos[0], current_pos[1], current_pos[2],
                                 current_pos[3], current_pos[4], current_pos[5]))
             self.conn.commit()
-            self.ui.outputResponse.append(f' [ACTION]\tPositions recorded and saved to database as "{self.new_table}".')
+            self.ui.outputResponse.append(f' [INFO]\tPositions recorded and saved to database as "{self.new_table}".')
             self.ui.outputResponse.append(f' [INFO]\t{str(current_pos)}')
             self.load_database_motion()
         
         except Exception as e:
-            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.')
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
     
     @staticmethod
     def setp_to_list(sp):
@@ -498,13 +520,30 @@ class URCommunication_UI(QMainWindow):
         self.ui.runRobotBtn.setEnabled(True)
         self.ui.outputResponse.append(f' [INFO]\tRobot movement for "{selected_motion}" completed.\n')
     
-    def run_robot(self):
-        self.worker = RobotWorkerThread(self, self.setpoints, self.ui.numRepetition.value(), self.con, self.setp, self.watchdog)
-        self.worker.next_setp.connect(self.handle_next_setpoint)
-        self.worker.progress.connect(self.handle_progress_update)
-        self.worker.finished.connect(self.handle_robot_movement_finished)
-        self.worker.start()
-        self.ui.runRobotBtn.setEnabled(False)
+    def handle_thread_error(self, error_signal):
+        self.ui.outputResponse.append(error_signal)
+    
+    def run_robot_command(self):
+        try:
+            self.worker = RobotControlThread(self, self.setpoints, self.ui.numRepetition.value(), self.con, self.setp, self.watchdog)
+            self.worker.next_setp.connect(self.handle_next_setpoint)
+            self.worker.progress.connect(self.handle_progress_update)
+            self.worker.finished.connect(self.handle_robot_movement_finished)
+            self.worker.error.connect(self.handle_thread_error)
+            self.worker.start()
+            self.ui.runRobotBtn.setEnabled(False)
+        
+        except Exception as e:
+            self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
+    
+    def stop_robot_command(self):
+        if hasattr(self, 'worker') and self.worker.isRunning():
+            self.worker.stop()
+            self.worker.wait()          # Wait for the thread to finish
+            self.ui.runRobotBtn.setEnabled(True)
+            self.ui.outputResponse.append(' [INFO]\tRobot control thread stopped.')
+        else:
+            self.ui.outputResponse.append(' [INFO]\tNo running robot control thread.\n')
     
     def clear_table(self):
         self.ui.motionTable.clearContents()
