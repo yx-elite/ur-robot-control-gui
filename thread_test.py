@@ -2,9 +2,10 @@ import sys
 import logging
 import socket
 import sqlite3
+import time
 import rtde.rtde as rtde
 import rtde.rtde_config as rtde_config
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtWidgets import QMainWindow, QApplication, QTableWidgetItem, QMessageBox
 from PyQt5.uic import loadUi
 from main_ui import Ui_MainWindow
@@ -15,6 +16,54 @@ ROBOT_PORT_2 = 29999    # Socket
 config_filename = 'config/main-config.xml'
 motion_database = 'data/motion-data.db'
 UR_script = 'rtde_control_loop.urp'
+
+class RobotWorker(QThread):
+    finished = pyqtSignal()
+
+    def __init__(self, setpoints, num_repetition, con, setp, watchdog, parent=None):
+        super().__init__(parent)
+        self.setpoints = setpoints
+        self.num_repetition = num_repetition
+        self.con = con
+        self.setp = setp
+        self.watchdog = watchdog
+
+    def run(self):
+        num_setpoints = len(self.setpoints)
+        movement_count = 0
+        current_setpoint_index = 0
+        move_completed = True
+        keep_running = True
+
+        while keep_running:
+            if movement_count < self.num_repetition:
+                state = self.con.receive()
+                if state is None:
+                    break
+                
+                if move_completed and state.output_int_register_0 == 1:
+                    move_completed = False
+                    current_setpoint_index = (current_setpoint_index + 1) % num_setpoints
+                    new_setpoint = self.setpoints[current_setpoint_index]
+                    for i in range(0, 6):
+                        self.setp.__dict__["input_double_register_%i" % i] = new_setpoint[i]
+                    self.con.send(self.setp)
+                    self.watchdog.input_int_register_0 = 1
+                
+                elif not move_completed and state.output_int_register_0 == 0:
+                    move_completed = True
+                    self.watchdog.input_int_register_0 = 0
+                    movement_count += (1/num_setpoints)
+                    print(movement_count)
+                
+                self.con.send(self.watchdog)
+            
+            else:
+                time.sleep(5)
+                break
+
+        self.finished.emit()
+
 
 class URCommunication_UI(QMainWindow):
     def __init__(self):
@@ -363,38 +412,12 @@ class URCommunication_UI(QMainWindow):
         return sp
     
     def run_robot(self):
-        num_repetition = self.ui.numRepetition.value()
-        num_setpoints = len(self.setpoints)
-        movement_count = 0
-        current_setpoint_index = 0
-        move_completed = True
-        keep_running = True
-        
-        while keep_running:
-            if movement_count < num_repetition:
-                state = self.con.receive()
-                if state is None: 
-                    break
-                
-                if move_completed and state.output_int_register_0 == 1:
-                    move_completed = False
-                    current_setpoint_index = (current_setpoint_index + 1) % num_setpoints
-                    new_setpoint = self.setpoints[current_setpoint_index]
-                    self.list_to_setp(self.setp, new_setpoint)
-                    self.con.send(self.setp)
-                    self.watchdog.input_int_register_0 = 1
-                
-                elif not move_completed and state.output_int_register_0 == 0:
-                    move_completed = True
-                    self.watchdog.input_int_register_0 = 0
-                    movement_count += (1/num_setpoints)
-                    print(movement_count)
-                
-                # Kick watchdog
-                self.con.send(self.watchdog)
-            
-            else:
-                break
+        self.worker = RobotWorker(self.setpoints, self.ui.numRepetition.value(), self.con, self.setp, self.watchdog)
+        self.worker.finished.connect(self.handle_robot_finished)
+        self.worker.start()
+
+    def handle_robot_finished(self):
+        print("Robot movement completed.")
     
     def clear_table(self):
         self.ui.motionTable.clearContents()
