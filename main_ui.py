@@ -21,6 +21,9 @@ class Ui_MainWindow(object):
         sizePolicy.setHeightForWidth(MainWindow.sizePolicy().hasHeightForWidth())
         MainWindow.setSizePolicy(sizePolicy)
         MainWindow.setMaximumSize(QtCore.QSize(1250, 800))
+        icon = QtGui.QIcon()
+        icon.addPixmap(QtGui.QPixmap(":/img/ur-robot.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        MainWindow.setWindowIcon(icon)
         MainWindow.setStyleSheet("QLineEdit {\n"
 "    padding: 3px\n"
 "}\n"
@@ -606,6 +609,7 @@ class Ui_MainWindow(object):
         self.outputLabel.setText(_translate("MainWindow", "System Output"))
         self.clearOutputBtn.setText(_translate("MainWindow", "Clear Output"))
         self.clearTableBtn.setText(_translate("MainWindow", "Clear Table"))
+import resource_rc
 
 
 if __name__ == "__main__":

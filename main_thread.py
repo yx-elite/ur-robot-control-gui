@@ -31,12 +31,9 @@ motion_database = resource_path('data\\motion-data.db')
 UR_script = 'rtde_control_loop.urp'
 
 class ConnectionThread(QThread):
-    def __init__(self, parent, host, connection_status):
+    def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
-        self.host = host
-        self.con = rtde.RTDE(self.host, ROBOT_PORT_1)
-        self.connection_status = connection_status
         self.running = True
         
     def run(self):
@@ -44,14 +41,18 @@ class ConnectionThread(QThread):
             if not self.running:
                 break
             
-            if self.con.is_connected():
+            self.ROBOT_HOST = self.parent.ui.serverInput.text()
+            self.con = rtde.RTDE(self.ROBOT_HOST, ROBOT_PORT_1)
+            
+            if self.con:
                 logging.error('RTDE connection lost. Reconnecting...')
-                self.connection_status.setChecked(False)
+                self.parent.ui.connectionStatus.setChecked(False)
                 self.parent.initialize_rtde_connection()
                 print('RTDE reconnected.')
             else:
+                print(self.ROBOT_HOST)
+                self.parent.ui.connectionStatus.setChecked(False)
                 print('RTDE still in connection state.')
-                self.connection_status.setChecked(True)
             time.sleep(1)
     
     def stop(self):
@@ -157,13 +158,11 @@ class URCommunication_UI(QMainWindow):
         
         self.load_adapter_dropdown()
         self.ui.serverInput.setText('192.168.189.129')
-        self.ROBOT_HOST = str(self.ui.serverInput.text())
         self.ui.connectBtn.clicked.connect(self.setup_connection)
         self.ui.disconnectBtn.setEnabled(False)
         self.ui.disconnectBtn.clicked.connect(self.end_connection)
         
         self.rt_con_status = False
-        self.connection_thread = ConnectionThread(self, self.ROBOT_HOST, self.ui.connectionStatus)
         
         self.ui.powerOnBtn.clicked.connect(self.power_on)
         self.ui.powerOffBtn.clicked.connect(self.power_off)
@@ -246,31 +245,30 @@ class URCommunication_UI(QMainWindow):
             
             self.watchdog.input_int_register_0 = 0
             
+            self.ui.outputResponse.append(' [INFO]\tRTDE connection initialized successfully.')
             logging.info('RTDE connection initialized successfully.')
             return True
             
         except Exception as e:
-            logging.error(f'Error initializing RTDE connection: {e}.\n')
+            self.ui.outputResponse.append(f' [ERROR]\tError initializing RTDE connection: {e}.')
+            logging.error(f'Error initializing RTDE connection: {e}.')
             return False
 
     def initialize_dashboard_server_connection(self):
         try:
             logging.info('Initializing dashboard server connection...')
             self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.s.settimeout(0.5)
             self.s.connect((self.ROBOT_HOST, ROBOT_PORT_2))
             self.s.recv(1024).decode()
-            self.s.send(('PolyScopeVersion' + '\n').encode())
-            polyscope_ver = self.s.recv(1024).decode()
-            self.s.send(('get serial number' + '\n').encode())
-            serial_num = self.s.recv(1024).decode()
-            self.s.send(('get robot model' + '\n').encode())
-            robot_model = self.s.recv(1024).decode()
             
+            self.ui.outputResponse.append(' [INFO]\tDashboard server connection initialized successfully.')
             logging.info('Dashboard server connection initialized successfully.')
             return True
             
         except Exception as e:
-            logging.error(f'Error initializing dashboard server connection: {e}.\n')
+            self.ui.outputResponse.append(f' [ERROR]\tError initializing dashboard server connection: {e}.')
+            logging.error(f'Error initializing dashboard server connection: {e}.')
             return False
 
     def initialize_database_connection(self):
@@ -278,15 +276,20 @@ class URCommunication_UI(QMainWindow):
             logging.info('Initializing database connection...')
             self.conn = sqlite3.connect(motion_database)
             self.cur = self.conn.cursor()
+            self.ui.outputResponse.append(' [INFO]\tDatabase connection initialized successfully.')
             logging.info('Database connection initialized successfully.')
             return True
             
         except Exception as e:
-            logging.error(f'Error initializing database connection: {e}.\n')
+            self.ui.outputResponse.append(f' [ERROR]\tError initializing database connection: {e}.')
+            logging.error(f'Error initializing database connection: {e}.')
             return False
 
-    # In your setup_connection method:
     def setup_connection(self):
+        self.ROBOT_HOST = str(self.ui.serverInput.text())
+        self.connection_thread = ConnectionThread(self)
+        self.connection_thread.start()
+        
         rtde_connection_success = self.initialize_rtde_connection()
         dashboard_connection_success = self.initialize_dashboard_server_connection()
         database_connection_success = self.initialize_database_connection()
@@ -301,14 +304,13 @@ class URCommunication_UI(QMainWindow):
             self.ui.outputResponse.append(f' [INFO]\tSerial Number: {serial_num[:-1]}')
             self.ui.outputResponse.append(f' [INFO]\tRobot Model: {robot_model[:-1]}\n')
             
-            self.connection_thread.start()
             self.ui.connectionStatus.setChecked(True)
             self.ui.disconnectBtn.setEnabled(True)
             self.ui.shutDownBtn.setEnabled(False)
             self.rt_con_status = True
             self.load_database_motion()
         else:
-            self.ui.outputResponse.append(f' [ERROR]\tFailed to establish connection to {self.ROBOT_HOST}.')
+            self.ui.outputResponse.append(f' [ERROR]\tFailed to establish connection to {self.ROBOT_HOST}\n.')
         
     def end_connection(self):
         # Close all connections
@@ -324,24 +326,6 @@ class URCommunication_UI(QMainWindow):
         self.ui.connectBtn.setEnabled(True)
         self.ui.disconnectBtn.setEnabled(False)
         self.rt_con_status = False
-    
-    def check_connection(self):
-        self.con = rtde.RTDE(self.ROBOT_HOST, ROBOT_PORT_1)
-        if self.rt_con_status:
-            if self.con.is_connected():
-                logging.error('RTDE connection lost. Reconnecting...')
-                self.initialize_rtde_connection()
-                print('RTDE reconnected.')
-            else:
-                print('RTDE still in connection state.')
-            
-            self.initialize_dashboard_server_connection()
-            self.initialize_database_connection()
-            self.ui.connectionStatus.setChecked(True)
-        
-        else:
-            self.ui.connectionStatus.setChecked(False)
-            logging.error("Data synchronization is not established yet.")
     
     def power_on(self):
         try:

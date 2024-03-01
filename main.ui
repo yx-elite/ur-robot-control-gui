@@ -25,6 +25,10 @@
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
+  <property name="windowIcon">
+   <iconset resource="resource.qrc">
+    <normaloff>:/img/ur-robot.png</normaloff>:/img/ur-robot.png</iconset>
+  </property>
   <property name="styleSheet">
    <string notr="true">QLineEdit {
 	padding: 3px
@@ -1517,6 +1521,8 @@
    </layout>
   </widget>
  </widget>
- <resources/>
+ <resources>
+  <include location="resource.qrc"/>
+ </resources>
  <connections/>
 </ui>
