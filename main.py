@@ -14,50 +14,61 @@ from PyQt5.QtGui import QIcon
 from PyQt5.uic import loadUi
 from main_ui import Ui_MainWindow
 
-def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-
-    return os.path.join(base_path, relative_path)
 
 ROBOT_PORT_1 = 30004    # RTDE
 ROBOT_PORT_2 = 29999    # Socket
-config_filename = resource_path('config\\main-config.xml')
-motion_database = resource_path('data\\motion-data.db')
+config_filename = 'config/main-config.xml'
+motion_database = 'data/motion-data.db'
 UR_script = 'rtde_control_loop.urp'
 
 class ConnectionThread(QThread):
-    def __init__(self, parent):
+    bg_con_status = pyqtSignal(bool)
+    finished = pyqtSignal()
+    
+    def __init__(self, parent, con):
         super().__init__(parent)
         self.parent = parent
+        self.con = con
         self.running = True
+        self.con_status = True
         
     def run(self):
         while True:
+            refresh_rate = 6 - self.parent.ui.refreshRate.value()
             if not self.running:
                 break
             
-            self.ROBOT_HOST = self.parent.ui.serverInput.text()
-            self.con = rtde.RTDE(self.ROBOT_HOST, ROBOT_PORT_1)
+            try:
+                test = self.con.get_controller_version()
+                if test == (None, None, None, None):
+                    self.parent.ui.connectionStatus.setChecked(False)
+                    self.con_status = False
+                    time.sleep(refresh_rate)
+                else:
+                    self.parent.ui.connectionStatus.setChecked(True)
+                    self.con_status = True
+                    time.sleep(refresh_rate)
+                
+            except TimeoutError as e:
+                self.parent.ui.connectionStatus.setChecked(False)
+                self.con_status = False
+                logging.error(f'RTDE connection error: {e}\nReconnecting....')
             
-            if self.con:
-                logging.error('RTDE connection lost. Reconnecting...')
+            except Exception as e:
                 self.parent.ui.connectionStatus.setChecked(False)
-                self.parent.initialize_rtde_connection()
-                print('RTDE reconnected.')
-            else:
-                print(self.ROBOT_HOST)
-                self.parent.ui.connectionStatus.setChecked(False)
+                self.con_status = False
                 print('RTDE still in connection state.')
-            time.sleep(1)
+            
+            self.bg_con_status.emit(self.con_status)
+        
+        self.finished.emit()
     
     def stop(self):
-        """Method to stop the worker thread"""
+        """Method to stop the worker_thread thread"""
         self.running = False
+        self.quit()
+        self.wait()
+
 
 class RobotControlThread(QThread):
     """
@@ -156,13 +167,14 @@ class URCommunication_UI(QMainWindow):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         
+        self.connection_thread = None
+        self.worker_thread = None
+        
         self.load_adapter_dropdown()
         self.ui.serverInput.setText('192.168.189.129')
         self.ui.connectBtn.clicked.connect(self.setup_connection)
         self.ui.disconnectBtn.setEnabled(False)
         self.ui.disconnectBtn.clicked.connect(self.end_connection)
-        
-        self.rt_con_status = False
         
         self.ui.powerOnBtn.clicked.connect(self.power_on)
         self.ui.powerOffBtn.clicked.connect(self.power_off)
@@ -221,7 +233,7 @@ class URCommunication_UI(QMainWindow):
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}')
             return None
     
-    def initialize_rtde_connection(self):
+    def initialize_rtde_connection(self, ROBOT_HOST):
         try:
             logging.info('Initializing RTDE connection...')
             conf = rtde_config.ConfigFile(config_filename)
@@ -229,7 +241,7 @@ class URCommunication_UI(QMainWindow):
             setp_names, setp_types = conf.get_recipe('setp') 
             watchdog_names, watchdog_types = conf.get_recipe('watchdog')
             
-            self.con = rtde.RTDE(self.ROBOT_HOST, ROBOT_PORT_1)
+            self.con = rtde.RTDE(ROBOT_HOST, ROBOT_PORT_1)
             self.con.connect()
             self.con.get_controller_version()
             self.con.send_output_setup(state_names, state_types)
@@ -276,7 +288,7 @@ class URCommunication_UI(QMainWindow):
             logging.info('Initializing database connection...')
             self.conn = sqlite3.connect(motion_database)
             self.cur = self.conn.cursor()
-            self.ui.outputResponse.append(' [INFO]\tDatabase connection initialized successfully.')
+            self.ui.outputResponse.append(' [INFO]\tDatabase connection initialized successfully.\n')
             logging.info('Database connection initialized successfully.')
             return True
             
@@ -287,10 +299,8 @@ class URCommunication_UI(QMainWindow):
 
     def setup_connection(self):
         self.ROBOT_HOST = str(self.ui.serverInput.text())
-        #self.connection_thread = ConnectionThread(self)
-        #self.connection_thread.start()
         
-        rtde_connection_success = self.initialize_rtde_connection()
+        rtde_connection_success = self.initialize_rtde_connection(self.ROBOT_HOST)
         dashboard_connection_success = self.initialize_dashboard_server_connection()
         database_connection_success = self.initialize_database_connection()
         
@@ -305,27 +315,70 @@ class URCommunication_UI(QMainWindow):
             self.ui.outputResponse.append(f' [INFO]\tRobot Model: {robot_model[:-1]}\n')
             
             self.ui.connectionStatus.setChecked(True)
-            self.ui.disconnectBtn.setEnabled(True)
-            self.ui.shutDownBtn.setEnabled(False)
-            self.rt_con_status = True
-            self.load_database_motion()
         else:
-            self.ui.outputResponse.append(f' [ERROR]\tFailed to establish connection to {self.ROBOT_HOST}\n.')
+            self.ui.connectionStatus.setChecked(False)
+            self.ui.outputResponse.append(f' [ERROR]\tFailed to establish connection to {self.ROBOT_HOST}.\n')
         
+        if self.ui.bgProcess.isChecked() and self.connection_thread is None:
+            self.connection_thread = ConnectionThread(self, self.con)
+            self.connection_thread.bg_con_status.connect(self.handle_background_connection)
+            self.connection_thread.finished.connect(self.handle_real_time_connection_finished)
+            self.connection_thread.start()
+        
+        self.load_database_motion()
+        self.ui.bgProcess.setEnabled(False)
+        self.ui.shutDownBtn.setEnabled(False)
+        self.ui.connectBtn.setEnabled(False)
+        self.ui.disconnectBtn.setEnabled(True)
+    
     def end_connection(self):
+        self.con.connect()
+        
         # Close all connections
-        self.con.disconnect()
-        self.s.close()
-        self.conn.commit()
-        self.conn.close()
+        if hasattr(self, 'con'):
+            self.con.disconnect()
+        if hasattr(self, 's'):
+            self.s.close()
+        if hasattr(self, 'conn'):
+            self.conn.commit()
+            self.conn.close()
         
-        if hasattr(self, 'connection_thread') and self.connection_thread.isRunning():
-            self.connection_thread.stop()
+        # Stop the real-time connection thread
+        try:
+            if self.ui.bgProcess.isChecked() and self.connection_thread is not None:
+                self.connection_thread.stop()
+                self.connection_thread.wait()  # Wait for the thread to finish
+                self.connection_thread = None  # Reset to None after thread finishes
         
+        except Exception as e:
+            pass
+        
+        # Stop the robot control thread
+        if hasattr(self, 'worker_thread') and self.worker_thread is not None:
+            self.worker_thread.stop()
+            self.worker_thread.wait()
+            self.worker_thread = None
+        
+        self.ui.bgProcess.setEnabled(True)
+        self.ui.bgProcess.setChecked(False)
         self.ui.connectionStatus.setChecked(False)
         self.ui.connectBtn.setEnabled(True)
         self.ui.disconnectBtn.setEnabled(False)
-        self.rt_con_status = False
+        self.ui.outputResponse.append(' [INFO]\tServer disconnected.')
+
+    
+    def handle_background_connection(self, bg_connection):
+        if not bg_connection:
+            print('Reconnecting...')
+            self.con.disconnect()
+            self.initialize_rtde_connection(self.ui.serverInput.text())
+        else:
+            print('RTDE connection established.')
+    
+    def handle_real_time_connection_finished(self):
+        self.connection_thread = None
+        print('Real time connection background process discarded.')
+        self.ui.outputResponse.append(' [INFO]\tReal time connection background process discarded.\n')
     
     def power_on(self):
         try:
@@ -383,7 +436,6 @@ class URCommunication_UI(QMainWindow):
             response = self.send_dashboard_server_command('stop')
             self.ui.outputResponse.append(' [INFO]\tButton "Stop Robot" is triggered successfully.')
             self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
-            self.ui.progressBar.setValue(0)
             self.ui.runRobotBtn.setEnabled(True)
         
         except Exception as e:
@@ -469,6 +521,7 @@ class URCommunication_UI(QMainWindow):
             motion_data = self.cur.fetchall()
             self.ui.outputResponse.append(f' [INFO]\tMotion "{selected_motion}" successfully loaded.')
             self.ui.motionTable.clearContents()
+            self.ui.progressBar.setValue(0)
             self.ui.recordBtn.setEnabled(False)
             
             self.setpoints = []
@@ -498,7 +551,7 @@ class URCommunication_UI(QMainWindow):
                 if confirm == QMessageBox.Yes:
                     self.cur.execute(f'DROP TABLE IF EXISTS {selected_motion}')
                     self.conn.commit()
-                    self.ui.outputResponse.append(f' [INFO]\tMotion data "{selected_motion}" deleted successfully.')
+                    self.ui.outputResponse.append(f' [INFO]\tMotion data "{selected_motion}" deleted successfully.\n')
                     self.load_database_motion()
                     self.ui.motionTable.clearContents()
         
@@ -541,6 +594,8 @@ class URCommunication_UI(QMainWindow):
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
+            self.con.disconnect()
+            self.initialize_rtde_connection(self.ROBOT_HOST)
     
     @staticmethod
     def setp_to_list(sp):
@@ -574,21 +629,22 @@ class URCommunication_UI(QMainWindow):
     
     def run_robot_command(self):
         try:
-            self.worker = RobotControlThread(self, self.setpoints, self.ui.numRepetition.value(), self.con, self.setp, self.watchdog)
-            self.worker.next_setp.connect(self.handle_next_setpoint)
-            self.worker.progress.connect(self.handle_progress_update)
-            self.worker.finished.connect(self.handle_robot_movement_finished)
-            self.worker.error.connect(self.handle_thread_error)
-            self.worker.start()
+            self.worker_thread = RobotControlThread(self, self.setpoints, self.ui.numRepetition.value(), self.con, self.setp, self.watchdog)
+            self.worker_thread.next_setp.connect(self.handle_next_setpoint)
+            self.worker_thread.progress.connect(self.handle_progress_update)
+            self.worker_thread.finished.connect(self.handle_robot_movement_finished)
+            self.worker_thread.error.connect(self.handle_thread_error)
+            self.worker_thread.start()
             self.ui.runRobotBtn.setEnabled(False)
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
     
     def stop_robot_command(self):
-        if hasattr(self, 'worker') and self.worker.isRunning():
-            self.worker.stop()
-            self.worker.wait()          # Wait for the thread to finish
+        if hasattr(self, 'worker_thread') and self.worker_thread.isRunning():
+            self.worker_thread.stop()
+            self.worker_thread.wait() 
+            self.worker_thread = None
             self.ui.outputResponse.append(' [INFO]\tRobot control thread stopped.')
         else:
             self.ui.outputResponse.append(' [INFO]\tNo running robot control thread.\n')
@@ -596,7 +652,6 @@ class URCommunication_UI(QMainWindow):
     def clear_table(self):
         self.ui.motionTable.clearContents()
         self.ui.recordBtn.setEnabled(True)
-
 
 
 if __name__ == '__main__':
