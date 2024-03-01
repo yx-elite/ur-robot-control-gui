@@ -33,7 +33,10 @@ class Ui_MainWindow(object):
 "    padding: 3px\n"
 "}\n"
 "\n"
-"#outputFrame QScrollArea {background:blue}")
+"#bgProcess {\n"
+"    margin-top: 7px;\n"
+"    margin-right: 10px\n"
+"}")
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.verticalLayout_11 = QtWidgets.QVBoxLayout(self.centralwidget)
@@ -169,6 +172,12 @@ class Ui_MainWindow(object):
         self.horizontalLayout_5.addWidget(self.connectionStatus)
         spacerItem1 = QtWidgets.QSpacerItem(782, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout_5.addItem(spacerItem1)
+        self.bgProcess = QtWidgets.QCheckBox(self.connectionConfig)
+        font = QtGui.QFont()
+        font.setPointSize(9)
+        self.bgProcess.setFont(font)
+        self.bgProcess.setObjectName("bgProcess")
+        self.horizontalLayout_5.addWidget(self.bgProcess)
         self.connectBtn = QtWidgets.QPushButton(self.connectionConfig)
         self.connectBtn.setMinimumSize(QtCore.QSize(136, 32))
         self.connectBtn.setMaximumSize(QtCore.QSize(136, 32))
@@ -573,6 +582,7 @@ class Ui_MainWindow(object):
         self.adapterLabel.setText(_translate("MainWindow", "Adapter"))
         self.serverLabel.setText(_translate("MainWindow", "Server"))
         self.connectionStatus.setText(_translate("MainWindow", "Connected"))
+        self.bgProcess.setText(_translate("MainWindow", "Real-time Connection Check"))
         self.connectBtn.setText(_translate("MainWindow", "Connect"))
         self.disconnectBtn.setText(_translate("MainWindow", "Disconnect"))
         self.powerOnBtn.setText(_translate("MainWindow", "Power On"))

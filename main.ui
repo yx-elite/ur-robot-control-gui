@@ -39,7 +39,10 @@
 	padding: 3px
 }
 
-#outputFrame QScrollArea {background:blue}</string>
+#bgProcess {
+	margin-top: 7px;
+	margin-right: 10px
+}</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_11">
@@ -396,6 +399,18 @@
              </size>
             </property>
            </spacer>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="bgProcess">
+            <property name="font">
+             <font>
+              <pointsize>9</pointsize>
+             </font>
+            </property>
+            <property name="text">
+             <string>Real-time Connection Check</string>
+            </property>
+           </widget>
           </item>
           <item>
            <widget class="QPushButton" name="connectBtn">
