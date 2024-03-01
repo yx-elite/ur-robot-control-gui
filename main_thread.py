@@ -19,6 +19,26 @@ config_filename = 'config/main-config.xml'
 motion_database = 'data/motion-data.db'
 UR_script = 'rtde_control_loop.urp'
 
+class ConnectionThread(QThread):
+    def __init__(self, parent, host, connection_status):
+        super().__init__(parent)
+        self.parent = parent
+        self.host = host
+        self.con = rtde.RTDE(self.host, ROBOT_PORT_1)
+        self.connection_status = connection_status
+
+    def run(self):
+        while True:
+            if self.con.is_connected():
+                logging.error('RTDE connection lost. Reconnecting...')
+                self.connection_status.setChecked(False)
+                self.parent.initialize_rtde_connection()
+                print('RTDE reconnected.')
+            else:
+                print('RTDE still in connection state.')
+                self.connection_status.setChecked(True)
+            time.sleep(5)
+
 class RobotControlThread(QThread):
     """
     A separate worker thread for robot controlling.
@@ -123,11 +143,8 @@ class URCommunication_UI(QMainWindow):
         self.ui.disconnectBtn.setEnabled(False)
         self.ui.disconnectBtn.clicked.connect(self.end_connection)
         
-        # Real time connection status tracking every second
-        # self.rt_con_status = False
-        # self.timer = QTimer(self)
-        # self.timer.timeout.connect(self.check_connection)
-        # self.timer.start(1000)
+        self.connection_thread = ConnectionThread(self, self.ROBOT_HOST, self.ui.connectionStatus)
+        self.connection_thread.start()
         
         self.ui.powerOnBtn.clicked.connect(self.power_on)
         self.ui.powerOffBtn.clicked.connect(self.power_off)
@@ -160,7 +177,7 @@ class URCommunication_UI(QMainWindow):
             ipconfig_output = subprocess.check_output(["ipconfig", "/all"], universal_newlines=True)
             ipv4_pattern = r"IPv4 Address(?:.*): (\d+\.\d+\.\d+\.\d+)"
             matches = re.findall(ipv4_pattern, ipconfig_output)
-            
+
             # Add matched IPv4 addresses to the list
             ipv4_addresses = []
             for match in matches:
