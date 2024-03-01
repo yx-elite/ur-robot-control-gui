@@ -34,8 +34,11 @@ class Ui_MainWindow(object):
 "}\n"
 "\n"
 "#bgProcess {\n"
-"    margin-top: 7px;\n"
-"    margin-right: 10px\n"
+"    margin-top: 2px;\n"
+"}\n"
+"\n"
+"#refreshRate {\n"
+"    margin-right: 7px;\n"
 "}")
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
@@ -173,11 +176,26 @@ class Ui_MainWindow(object):
         spacerItem1 = QtWidgets.QSpacerItem(782, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout_5.addItem(spacerItem1)
         self.bgProcess = QtWidgets.QCheckBox(self.connectionConfig)
+        self.bgProcess.setMinimumSize(QtCore.QSize(187, 24))
+        self.bgProcess.setMaximumSize(QtCore.QSize(187, 24))
         font = QtGui.QFont()
         font.setPointSize(9)
         self.bgProcess.setFont(font)
         self.bgProcess.setObjectName("bgProcess")
         self.horizontalLayout_5.addWidget(self.bgProcess)
+        self.refreshRate = QtWidgets.QDoubleSpinBox(self.connectionConfig)
+        self.refreshRate.setMinimumSize(QtCore.QSize(65, 28))
+        self.refreshRate.setMaximumSize(QtCore.QSize(65, 28))
+        font = QtGui.QFont()
+        font.setPointSize(9)
+        self.refreshRate.setFont(font)
+        self.refreshRate.setDecimals(1)
+        self.refreshRate.setMinimum(1.0)
+        self.refreshRate.setMaximum(5.0)
+        self.refreshRate.setSingleStep(0.1)
+        self.refreshRate.setProperty("value", 3.0)
+        self.refreshRate.setObjectName("refreshRate")
+        self.horizontalLayout_5.addWidget(self.refreshRate)
         self.connectBtn = QtWidgets.QPushButton(self.connectionConfig)
         self.connectBtn.setMinimumSize(QtCore.QSize(136, 32))
         self.connectBtn.setMaximumSize(QtCore.QSize(136, 32))
@@ -575,14 +593,14 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "Universal Robot Communication Tool"))
         self.appTitle.setText(_translate("MainWindow", "Universal Robots Communication Tool"))
         self.developer.setText(_translate("MainWindow", "Developed by"))
         self.github.setText(_translate("MainWindow", "<html><head/><body><p>Yi Xian (<a href=\"https://github.com/yx-elite\"><span style=\" text-decoration: underline; color:#000000;\">GitHub</span></a>)</p></body></html>"))
         self.adapterLabel.setText(_translate("MainWindow", "Adapter"))
         self.serverLabel.setText(_translate("MainWindow", "Server"))
         self.connectionStatus.setText(_translate("MainWindow", "Connected"))
-        self.bgProcess.setText(_translate("MainWindow", "Real-time Connection Check"))
+        self.bgProcess.setText(_translate("MainWindow", "Connection Refresh Rate"))
         self.connectBtn.setText(_translate("MainWindow", "Connect"))
         self.disconnectBtn.setText(_translate("MainWindow", "Disconnect"))
         self.powerOnBtn.setText(_translate("MainWindow", "Power On"))
