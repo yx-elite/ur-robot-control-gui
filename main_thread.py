@@ -287,8 +287,8 @@ class URCommunication_UI(QMainWindow):
 
     def setup_connection(self):
         self.ROBOT_HOST = str(self.ui.serverInput.text())
-        self.connection_thread = ConnectionThread(self)
-        self.connection_thread.start()
+        #self.connection_thread = ConnectionThread(self)
+        #self.connection_thread.start()
         
         rtde_connection_success = self.initialize_rtde_connection()
         dashboard_connection_success = self.initialize_dashboard_server_connection()
