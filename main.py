@@ -248,12 +248,8 @@ class URCommunication_UI(QMainWindow):
         except Exception as e:
             logging.error(f'Error initializing database connection: {e}.\n')
             return False
-
-    # In your setup_connection method:
+    
     def setup_connection(self):
-        self.ui.serverInput.setText('192.168.189.129')
-        self.ROBOT_HOST = str(self.ui.serverInput.text())
-        
         rtde_connection_success = self.initialize_rtde_connection()
         dashboard_connection_success = self.initialize_dashboard_server_connection()
         database_connection_success = self.initialize_database_connection()
@@ -262,22 +258,20 @@ class URCommunication_UI(QMainWindow):
             polyscope_ver = self.send_dashboard_server_command('PolyScopeVersion')
             serial_num = self.send_dashboard_server_command('get serial number')
             robot_model = self.send_dashboard_server_command('get robot model')
-            
+
             self.ui.outputResponse.append(f' [INFO]\tSuccessfully connected to robot host "{self.ROBOT_HOST}".')
             self.ui.outputResponse.append(f' [INFO]\tPolyscope Version: {polyscope_ver[:-1]}')
             self.ui.outputResponse.append(f' [INFO]\tSerial Number: {serial_num[:-1]}')
             self.ui.outputResponse.append(f' [INFO]\tRobot Model: {robot_model[:-1]}\n')
-            
+
             self.ui.connectionStatus.setChecked(True)
-            self.ui.connectBtn.setEnabled(False)
             self.ui.disconnectBtn.setEnabled(True)
             self.ui.shutDownBtn.setEnabled(False)
             self.rt_con_status = True
             self.load_database_motion()
         else:
             self.ui.outputResponse.append(f' [ERROR]\tFailed to establish connection to {self.ROBOT_HOST}.')
-
-        
+    
     def end_connection(self):
         # Close all connections
         self.con.disconnect()
@@ -516,7 +510,7 @@ class URCommunication_UI(QMainWindow):
                                 current_pos[3], current_pos[4], current_pos[5]))
             self.conn.commit()
             self.ui.outputResponse.append(f' [INFO]\tPositions recorded and saved to database as "{self.new_table}".')
-            self.ui.outputResponse.append(f' [INFO]\t{str(current_pos)}')
+            self.ui.outputResponse.append(f' [INFO]\t{str(current_pos)}\n')
             self.load_database_motion()
         
         except Exception as e:

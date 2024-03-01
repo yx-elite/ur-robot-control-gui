@@ -26,9 +26,13 @@ class ConnectionThread(QThread):
         self.host = host
         self.con = rtde.RTDE(self.host, ROBOT_PORT_1)
         self.connection_status = connection_status
-
+        self.running = True
+        
     def run(self):
         while True:
+            if not self.running:
+                break
+            
             if self.con.is_connected():
                 logging.error('RTDE connection lost. Reconnecting...')
                 self.connection_status.setChecked(False)
@@ -37,7 +41,11 @@ class ConnectionThread(QThread):
             else:
                 print('RTDE still in connection state.')
                 self.connection_status.setChecked(True)
-            time.sleep(5)
+            time.sleep(1)
+    
+    def stop(self):
+        """Method to stop the worker thread"""
+        self.running = False
 
 class RobotControlThread(QThread):
     """
@@ -143,8 +151,8 @@ class URCommunication_UI(QMainWindow):
         self.ui.disconnectBtn.setEnabled(False)
         self.ui.disconnectBtn.clicked.connect(self.end_connection)
         
+        self.rt_con_status = False
         self.connection_thread = ConnectionThread(self, self.ROBOT_HOST, self.ui.connectionStatus)
-        self.connection_thread.start()
         
         self.ui.powerOnBtn.clicked.connect(self.power_on)
         self.ui.powerOffBtn.clicked.connect(self.power_off)
@@ -268,9 +276,6 @@ class URCommunication_UI(QMainWindow):
 
     # In your setup_connection method:
     def setup_connection(self):
-        self.ui.serverInput.setText('192.168.189.129')
-        self.ROBOT_HOST = str(self.ui.serverInput.text())
-        
         rtde_connection_success = self.initialize_rtde_connection()
         dashboard_connection_success = self.initialize_dashboard_server_connection()
         database_connection_success = self.initialize_database_connection()
@@ -285,15 +290,14 @@ class URCommunication_UI(QMainWindow):
             self.ui.outputResponse.append(f' [INFO]\tSerial Number: {serial_num[:-1]}')
             self.ui.outputResponse.append(f' [INFO]\tRobot Model: {robot_model[:-1]}\n')
             
+            self.connection_thread.start()
             self.ui.connectionStatus.setChecked(True)
-            self.ui.connectBtn.setEnabled(False)
             self.ui.disconnectBtn.setEnabled(True)
             self.ui.shutDownBtn.setEnabled(False)
             self.rt_con_status = True
             self.load_database_motion()
         else:
             self.ui.outputResponse.append(f' [ERROR]\tFailed to establish connection to {self.ROBOT_HOST}.')
-
         
     def end_connection(self):
         # Close all connections
@@ -301,6 +305,10 @@ class URCommunication_UI(QMainWindow):
         self.s.close()
         self.conn.commit()
         self.conn.close()
+        
+        if hasattr(self, 'connection_thread') and self.connection_thread.isRunning():
+            self.connection_thread.stop()
+        
         self.ui.connectionStatus.setChecked(False)
         self.ui.connectBtn.setEnabled(True)
         self.ui.disconnectBtn.setEnabled(False)
@@ -533,7 +541,7 @@ class URCommunication_UI(QMainWindow):
                                 current_pos[3], current_pos[4], current_pos[5]))
             self.conn.commit()
             self.ui.outputResponse.append(f' [INFO]\tPositions recorded and saved to database as "{self.new_table}".')
-            self.ui.outputResponse.append(f' [INFO]\t{str(current_pos)}')
+            self.ui.outputResponse.append(f' [INFO]\t{str(current_pos)}\n')
             self.load_database_motion()
         
         except Exception as e:
