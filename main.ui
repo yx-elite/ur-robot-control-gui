@@ -43,8 +43,8 @@
 	margin-top: 2px;
 }
 
-#refreshRate {
-	margin-right: 7px;
+#connectBtn {
+	margin-left: 0px;
 }</string>
   </property>
   <widget class="QWidget" name="centralwidget">
@@ -380,6 +380,18 @@
           </property>
           <item>
            <widget class="QCheckBox" name="connectionStatus">
+            <property name="minimumSize">
+             <size>
+              <width>100</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>100</width>
+              <height>16777215</height>
+             </size>
+            </property>
             <property name="font">
              <font>
               <pointsize>9</pointsize>
@@ -397,7 +409,7 @@
             </property>
             <property name="sizeHint" stdset="0">
              <size>
-              <width>782</width>
+              <width>40</width>
               <height>20</height>
              </size>
             </property>
@@ -431,13 +443,13 @@
            <widget class="QDoubleSpinBox" name="refreshRate">
             <property name="minimumSize">
              <size>
-              <width>65</width>
+              <width>55</width>
               <height>28</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
-              <width>65</width>
+              <width>55</width>
               <height>28</height>
              </size>
             </property>
@@ -453,7 +465,7 @@
              <double>1.000000000000000</double>
             </property>
             <property name="maximum">
-             <double>5.000000000000000</double>
+             <double>10.000000000000000</double>
             </property>
             <property name="singleStep">
              <double>0.100000000000000</double>
@@ -462,6 +474,22 @@
              <double>3.000000000000000</double>
             </property>
            </widget>
+          </item>
+          <item>
+           <spacer name="horizontalSpacer_6">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeType">
+             <enum>QSizePolicy::Fixed</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>5</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
           </item>
           <item>
            <widget class="QPushButton" name="connectBtn">
