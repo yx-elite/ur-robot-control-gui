@@ -11,11 +11,23 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtWidgets import QMainWindow, QApplication, QTableWidgetItem, QMessageBox
 from main_ui import Ui_MainWindow
 
+import os
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 
 ROBOT_PORT_1 = 30004    # RTDE
 ROBOT_PORT_2 = 29999    # Socket
-config_filename = 'config/main-config.xml'
-motion_database = 'data/motion-data.db'
+config_filename = resource_path('config\\main-config.xml')
+motion_database = resource_path('data\\motion-data.db')
 UR_script = 'rtde_control_loop.urp'
 
 class ConnectionThread(QThread):
