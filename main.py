@@ -159,41 +159,43 @@ class URCommunication_UI(QMainWindow):
             return False
 
     def setup_connection(self):
-        self.ROBOT_HOST = str(self.ui.serverInput.text())
-        
-        rtde_connection_success = self.initialize_rtde_connection(self.ROBOT_HOST)
-        dashboard_connection_success = self.initialize_dashboard_server_connection()
-        database_connection_success = self.initialize_database_connection()
-        
-        if rtde_connection_success and dashboard_connection_success and database_connection_success:
-            polyscope_ver = self.send_dashboard_server_command('PolyScopeVersion')
-            serial_num = self.send_dashboard_server_command('get serial number')
-            robot_model = self.send_dashboard_server_command('get robot model')
+        confirm = QMessageBox.information(self, 'Connection Info - UR Communication Tool', 'Please ensure that the UR robot is powered ON to establish the connection between the controller and the robot.',
+                                            QMessageBox.Ok)
+        if confirm == QMessageBox.Ok:
+            self.ROBOT_HOST = str(self.ui.serverInput.text())
             
-            self.ui.outputResponse.append(f' [INFO]\tSuccessfully connected to robot host "{self.ROBOT_HOST}".')
-            self.ui.outputResponse.append(f' [INFO]\tPolyscope Version: {polyscope_ver[:-1]}')
-            self.ui.outputResponse.append(f' [INFO]\tSerial Number: {serial_num[:-1]}')
-            self.ui.outputResponse.append(f' [INFO]\tRobot Model: {robot_model[:-1]}\n')
+            rtde_connection_success = self.initialize_rtde_connection(self.ROBOT_HOST)
+            dashboard_connection_success = self.initialize_dashboard_server_connection()
+            database_connection_success = self.initialize_database_connection()
             
-            self.ui.connectionStatus.setChecked(True)
-        else:
-            self.ui.connectionStatus.setChecked(False)
-            self.ui.outputResponse.append(f' [ERROR]\tFailed to establish connection to {self.ROBOT_HOST}.\n')
-        
-        if self.ui.bgProcess.isChecked() and self.connection_thread is None:
-            self.connection_thread = ConnectionThread(self, self.con)
-            self.connection_thread.bg_con_status.connect(self.handle_background_connection)
-            self.connection_thread.program_state.connect(self.handle_program_state)
-            self.connection_thread.finished.connect(self.handle_real_time_connection_finished)
-            self.connection_thread.start()
-        
-        if not self.ui.bgProcess.isChecked():
-            self.ui.refreshRate.setEnabled(False)
-        
-        self.load_database_motion()
-        self.ui.bgProcess.setEnabled(False)
-        self.ui.connectBtn.setEnabled(False)
-        self.ui.disconnectBtn.setEnabled(True)
+            if rtde_connection_success and dashboard_connection_success and database_connection_success:
+                polyscope_ver = self.send_dashboard_server_command('PolyScopeVersion')
+                serial_num = self.send_dashboard_server_command('get serial number')
+                robot_model = self.send_dashboard_server_command('get robot model')
+                
+                self.ui.outputResponse.append(f' [INFO]\tSuccessfully connected to robot host "{self.ROBOT_HOST}".')
+                self.ui.outputResponse.append(f' [INFO]\tPolyscope Version: {polyscope_ver[:-1]}')
+                self.ui.outputResponse.append(f' [INFO]\tSerial Number: {serial_num[:-1]}')
+                self.ui.outputResponse.append(f' [INFO]\tRobot Model: {robot_model[:-1]}\n')
+                
+                if self.ui.bgProcess.isChecked() and self.connection_thread is None:
+                    self.connection_thread = ConnectionThread(self, self.con)
+                    self.connection_thread.bg_con_status.connect(self.handle_background_connection)
+                    self.connection_thread.program_state.connect(self.handle_program_state)
+                    self.connection_thread.finished.connect(self.handle_real_time_connection_finished)
+                    self.connection_thread.start()
+                
+                if not self.ui.bgProcess.isChecked():
+                    self.ui.refreshRate.setEnabled(False)
+                
+                self.ui.connectionStatus.setChecked(True)
+                self.load_database_motion()
+                self.ui.bgProcess.setEnabled(False)
+                self.ui.connectBtn.setEnabled(False)
+                self.ui.disconnectBtn.setEnabled(True)
+            else:
+                self.ui.connectionStatus.setChecked(False)
+                self.ui.outputResponse.append(f' [ERROR]\tFailed to establish connection to {self.ROBOT_HOST}.\n')
     
     def end_connection(self):
         self.con.connect()
@@ -327,9 +329,13 @@ class URCommunication_UI(QMainWindow):
     
     def shutdown_robot(self):
         try:
-            response = self.send_dashboard_server_command('shutdown')
-            self.ui.outputResponse.append(' [INFO]\tButton "Shutdown Robot" is triggered successfully.')
-            self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
+            if True:
+                confirm = QMessageBox.warning(self, 'Shutdown Robot - UR Communication Tool', 'Executing this command will close all the programs and processes that are currently running on the UR Robot.\n\nDo you want to continue?',
+                                            QMessageBox.Yes | QMessageBox.No)
+                if confirm == QMessageBox.Yes:
+                    response = self.send_dashboard_server_command('shutdown')
+                    self.ui.outputResponse.append(' [INFO]\tButton "Shutdown Robot" is triggered successfully.')
+                    self.ui.outputResponse.append(f' [INFO]\t{response[:-1]}\n')
         
         except Exception as e:
             self.ui.outputResponse.append(f' [ERROR]\tError receiving data: {e}.\n')
@@ -543,4 +549,4 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     ui = URCommunication_UI()
     ui.show()
-    sys.exit(app.exec())
+    app.exec()
