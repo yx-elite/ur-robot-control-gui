@@ -23,6 +23,7 @@ UR_script = 'rtde_control_loop.urp'
 
 class ConnectionThread(QThread):
     bg_con_status = pyqtSignal(bool)
+    program_state = pyqtSignal(str)
     finished = pyqtSignal()
     
     def __init__(self, parent, con):
@@ -35,6 +36,9 @@ class ConnectionThread(QThread):
     def run(self):
         while True:
             refresh_rate = 6 - self.parent.ui.refreshRate.value()
+            program_state = self.parent.send_dashboard_server_command('programState')
+            self.program_state.emit(program_state)
+            
             if not self.running:
                 break
             
@@ -127,7 +131,6 @@ class RobotControlThread(QThread):
                             self.con.send(self.setp)
                             self.watchdog.input_int_register_0 = 1
                             self.next_setp.emit(last_setpoint)
-                            time.sleep(3)
                             break
                         else:
                             move_completed = False
@@ -188,7 +191,6 @@ class URCommunication_UI(QMainWindow):
         self.ui.stopBtn.clicked.connect(self.stop_robot)
         self.ui.pauseBtn.clicked.connect(self.pause_robot)
         self.ui.shutDownBtn.clicked.connect(self.shutdown_robot)
-        self.ui.shutDownBtn.setEnabled(False)
         self.ui.unlockBtn.clicked.connect(self.unlock_protective_stop)
         self.ui.closePopUpBtn.clicked.connect(self.close_safety_popup)
         
@@ -322,12 +324,15 @@ class URCommunication_UI(QMainWindow):
         if self.ui.bgProcess.isChecked() and self.connection_thread is None:
             self.connection_thread = ConnectionThread(self, self.con)
             self.connection_thread.bg_con_status.connect(self.handle_background_connection)
+            self.connection_thread.program_state.connect(self.handle_program_state)
             self.connection_thread.finished.connect(self.handle_real_time_connection_finished)
             self.connection_thread.start()
         
+        if not self.ui.bgProcess.isChecked():
+            self.ui.refreshRate.setEnabled(False)
+        
         self.load_database_motion()
         self.ui.bgProcess.setEnabled(False)
-        self.ui.shutDownBtn.setEnabled(False)
         self.ui.connectBtn.setEnabled(False)
         self.ui.disconnectBtn.setEnabled(True)
     
@@ -349,6 +354,10 @@ class URCommunication_UI(QMainWindow):
                 self.connection_thread.stop()
                 self.connection_thread.wait()  # Wait for the thread to finish
                 self.connection_thread = None  # Reset to None after thread finishes
+            
+            if self.ui.bgProcess.isChecked() and self.resume_thread.isRunning():
+                self.resume_thread.stop()
+                self.resume_thread.wait()
         
         except Exception as e:
             pass
@@ -374,6 +383,13 @@ class URCommunication_UI(QMainWindow):
             self.initialize_rtde_connection(self.ui.serverInput.text())
         else:
             print('RTDE connection established.')
+    
+    def handle_program_state(self, program_state):
+        try:
+            print(f'Programme State: {program_state}')
+        
+        except Exception as e:
+            logging.error(f'Unsupported program state: {e}')
     
     def handle_real_time_connection_finished(self):
         self.connection_thread = None
@@ -620,8 +636,16 @@ class URCommunication_UI(QMainWindow):
         self.ui.outputResponse.append(f' [INFO]\tCurrent Progress: {movement_count:.2f} / {self.ui.numRepetition.value():.2f}')
     
     def handle_robot_movement_finished(self):
-        selected_motion = self.ui.motionSelect.currentText()
+        if self.ui.bgProcess.isChecked():
+            self.resume_thread = ConnectionThread(self, self.con)
+            self.resume_thread.bg_con_status.connect(self.handle_background_connection)
+            self.resume_thread.program_state.connect(self.handle_program_state)
+            self.resume_thread.finished.connect(self.handle_real_time_connection_finished)
+            self.resume_thread.start()
+        
+        self.ui.loadMotionBtn.setEnabled(True)
         self.ui.runRobotBtn.setEnabled(True)
+        selected_motion = self.ui.motionSelect.currentText()
         self.ui.outputResponse.append(f' [INFO]\tRobot movement for "{selected_motion}" completed.\n')
     
     def handle_thread_error(self, error_signal):
@@ -635,6 +659,8 @@ class URCommunication_UI(QMainWindow):
             self.worker_thread.finished.connect(self.handle_robot_movement_finished)
             self.worker_thread.error.connect(self.handle_thread_error)
             self.worker_thread.start()
+            
+            self.ui.loadMotionBtn.setEnabled(False)
             self.ui.runRobotBtn.setEnabled(False)
         
         except Exception as e:
