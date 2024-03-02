@@ -195,7 +195,7 @@ class Ui_MainWindow(object):
         self.refreshRate.setMinimum(1.0)
         self.refreshRate.setMaximum(10.0)
         self.refreshRate.setSingleStep(0.1)
-        self.refreshRate.setProperty("value", 3.0)
+        self.refreshRate.setProperty("value", 8.0)
         self.refreshRate.setObjectName("refreshRate")
         self.horizontalLayout_5.addWidget(self.refreshRate)
         spacerItem2 = QtWidgets.QSpacerItem(5, 20, QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Minimum)
