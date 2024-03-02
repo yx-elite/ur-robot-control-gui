@@ -1,0 +1,1 @@
+pyinstaller --onefile main_test.py --noconsole --icon ur-robot.ico --add-data "config\main-config.xml;config" --add-data "data\motion-data.db;data"
