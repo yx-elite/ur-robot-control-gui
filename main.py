@@ -22,6 +22,9 @@ motion_database = 'data/motion-data.db'
 UR_script = 'rtde_control_loop.urp'
 
 class ConnectionThread(QThread):
+    """
+    Worker thread for real time connection status checking.
+    """
     bg_con_status = pyqtSignal(bool)
     program_state = pyqtSignal(str)
     finished = pyqtSignal()
@@ -76,14 +79,7 @@ class ConnectionThread(QThread):
 
 class RobotControlThread(QThread):
     """
-    A separate worker thread for robot controlling.
-    
-    Attributes:
-        setpoints (list): List of setpoints for robot movements
-        num_repetition (int): Number of repetitions for each setpoint
-        con: Connection object for communication with the robot
-        setp: Object representing setpoint data
-        watchdog: Object representing watchdog status
+    Worker thread for robot controlling.
     """
     next_setp = pyqtSignal(list)
     progress = pyqtSignal(float)
@@ -98,11 +94,9 @@ class RobotControlThread(QThread):
         self.con = con
         self.setp = setp
         self.watchdog = watchdog
-        self.running = True         # Flag to control thread execution
+        self.running = True
     
     def run(self):
-        """Main method executed by the worker thread"""
-        
         num_setpoints = len(self.setpoints)
         movement_count = 0
         current_setpoint_index = -1
@@ -157,7 +151,6 @@ class RobotControlThread(QThread):
             logging.error(f'Connection Reset Error: {e}')
             self.error.emit(f' [ERROR]\tConnection Reset Error: {e}\n [ERROR]\tPlease reset the connection.')
         
-        # Emit the completion signal
         self.finished.emit()
     
     def stop(self):
@@ -165,6 +158,9 @@ class RobotControlThread(QThread):
         self.running = False
 
 class URCommunication_UI(QMainWindow):
+    """
+    Generate signals and functionalities for the UI.
+    """
     def __init__(self):
         super(URCommunication_UI, self).__init__()
         self.ui = Ui_MainWindow()
