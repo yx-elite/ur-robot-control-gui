@@ -10,8 +10,8 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidgetItem, QMessag
 from PyQt5.uic import loadUi
 from PyQt5.QtCore import Qt
 from main_ui import Ui_MainWindow
-from connection_thread import ConnectionThread
-from robot_control_thread import RobotControlThread
+from thread.connection_thread import ConnectionThread
+from thread.robot_control_thread import RobotControlThread
 
 
 ROBOT_PORT_1 = 30004    # RTDE
