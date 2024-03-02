@@ -1,1 +1,3 @@
-pyinstaller --onefile main_thread.py --noconsole --icon ur-robot.ico --add-data "config/main-config.xml;." --add-data "data/motion-data.db;." 
+pyinstaller --onefile main_thread.py --noconsole --icon ur-robot.ico --add-data "config/main-config.xml;." --add-data "data/motion-data.db;."
+
+pyinstaller -D -w -i .\ur-robot.ico .\main.py
